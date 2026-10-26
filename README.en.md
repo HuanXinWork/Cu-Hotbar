@@ -11,7 +11,7 @@ This mod adds a customizable hotbar in-game: drag items from the vanilla invento
 
 ## Changelog
 
-Full release history lives in [changes.en.md](changes.en.md) (中文：[changes.md](changes.md)). Builds are published at [Releases](https://github.com/huanxin996/Cu-Hotbar/releases).
+Full release history lives in [changes.en.md](changes.en.md) (中文：[changes.md](changes.md)). Builds are published at [Releases](https://github.com/HuanXinWork/Cu-Hotbar/releases).
 
 ## Features
 
@@ -71,6 +71,6 @@ On startup it compares against the latest GitHub release and shows a red notice 
 
 ## Related
 
-- [CasualtiesUnknown-SkinEditor](https://github.com/huanxin996/CasualtiesUnknown-SkinEditor): live preview and animation preview.
-- [huanxin996/Cu-SaveManager](https://github.com/huanxin996/Cu-SaveManager): multi-save, backup, panel extension point.
-- [huanxin996/Cu-Stats](https://github.com/huanxin996/Cu-Stats): block / item / combat / movement / kill statistics panel.
+- [CasualtiesUnknown-SkinEditor](https://github.com/HuanXinWork/CasualtiesUnknown-SkinEditor): live preview and animation preview.
+- [HuanXinWork/Cu-SaveManager](https://github.com/HuanXinWork/Cu-SaveManager): multi-save, backup, panel extension point.
+- [HuanXinWork/Cu-Stats](https://github.com/HuanXinWork/Cu-Stats): block / item / combat / movement / kill statistics panel.

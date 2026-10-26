@@ -11,7 +11,7 @@ English guide: see [README.en.md](README.en.md)
 
 ## 更新日志
 
-完整变更记录见 [changes.md](changes.md)（English: [changes.en.md](changes.en.md)）。最新发布在 [Releases](https://github.com/huanxin996/Cu-Hotbar/releases) 页面。
+完整变更记录见 [changes.md](changes.md)（English: [changes.en.md](changes.en.md)）。最新发布在 [Releases](https://github.com/HuanXinWork/Cu-Hotbar/releases) 页面。
 
 ## 功能
 
@@ -71,6 +71,6 @@ English guide: see [README.en.md](README.en.md)
 
 ## 相关项目
 
-- [CasualtiesUnknown-SkinEditor 皮肤编辑器](https://github.com/huanxin996/CasualtiesUnknown-SkinEditor)：支持实时预览与动画预览。
-- [huanxin996/Cu-SaveManager](https://github.com/huanxin996/Cu-SaveManager)：多存档管理、存档备份、模组设置面板扩展点。
-- [huanxin996/Cu-Stats](https://github.com/huanxin996/Cu-Stats)：方块 / 物品 / 战斗 / 移动 / 击杀统计面板。
+- [CasualtiesUnknown-SkinEditor 皮肤编辑器](https://github.com/HuanXinWork/CasualtiesUnknown-SkinEditor)：支持实时预览与动画预览。
+- [HuanXinWork/Cu-SaveManager](https://github.com/HuanXinWork/Cu-SaveManager)：多存档管理、存档备份、模组设置面板扩展点。
+- [HuanXinWork/Cu-Stats](https://github.com/HuanXinWork/Cu-Stats)：方块 / 物品 / 战斗 / 移动 / 击杀统计面板。

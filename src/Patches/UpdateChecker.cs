@@ -14,8 +14,8 @@ namespace CasualtiesUnknown.Hotbar
     public class UpdateChecker : MonoBehaviour
     {
         private const string PluginGuid = "com.casualtiesUnknown.hotbar";
-        private const string ApiUrl = "https://api.github.com/repos/huanxin996/Cu-Hotbar/releases/latest";
-        private const string ReleasesUrl = "https://github.com/huanxin996/Cu-Hotbar/releases";
+        private const string ApiUrl = "https://api.github.com/repos/HuanXinWork/Cu-Hotbar/releases/latest";
+        private const string ReleasesUrl = "https://github.com/HuanXinWork/Cu-Hotbar/releases";
         private const int UpdateNoticeSlot = 0;
 
         internal static bool Enabled = true;
