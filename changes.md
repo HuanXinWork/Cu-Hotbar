@@ -2,6 +2,16 @@
 
 > English changelog: see [changes.en.md](changes.en.md)
 
+## v1.0.8
+
+### 修复
+
+关于页的仓库与发布链接改为指向 Cu-Hotbar 自己的仓库，原先误指向 Cu-SaveManager。
+
+### 其他
+
+新增 Debug 构建专用日志，Release 产物不含调试字符串。
+
 ## v1.0.7
 
 ### 新增

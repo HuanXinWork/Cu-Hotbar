@@ -21,7 +21,12 @@ namespace CasualtiesUnknown.Hotbar
             if (__instance.dragItem == null && onSlot)
             {
                 var item = HotbarRuntime.Model.GetItem(index);
-                if (item != null) BeginDragFromSlot(__instance, item);
+                if (item != null)
+                {
+                    ModLog.Debug($"[UI] 拖拽开始：从槽位 #{index + 1}（索引 {index}）拖出物品="
+                        + HotbarRuntime.DescribeItem(item));
+                    BeginDragFromSlot(__instance, item);
+                }
             }
         }
 
@@ -49,10 +54,14 @@ namespace CasualtiesUnknown.Hotbar
             if (HotbarRuntime.View.TryGetSlotIndexAt(Input.mousePosition, out int index))
             {
                 HotbarRuntime.Model.Link(index, item);
+                // 拖拽落槽属于“移动栏位”，与切换/使用共用同一秒节流额度（来源标记为拖拽）。
+                ModLog.DebugThrottled("slot",
+                    $"[UI] 拖拽结束：物品={HotbarRuntime.DescribeItem(item)} 落到槽位 #{index + 1}（索引 {index}）来源=拖拽");
                 __instance.dragItem = null;
                 if (__instance.dragImage != null) __instance.dragImage.enabled = false;
                 return false;
             }
+            ModLog.Debug($"[UI] 拖拽结束：物品={HotbarRuntime.DescribeItem(item)} 未落在槽位上");
             return true;
         }
     }

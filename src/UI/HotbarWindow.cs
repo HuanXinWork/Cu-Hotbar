@@ -24,17 +24,20 @@ namespace CasualtiesUnknown.Hotbar
 
         internal void Toggle()
         {
-            if (Open) Close();
-            else Open = true;
+            if (Open) { Close(); return; }
+            Open = true;
+            ModLog.Debug("[UI] 设置面板打开（快捷键 / 主菜单按钮）");
         }
 
         internal void OpenIfClosed()
         {
+            if (!Open) ModLog.Debug("[UI] 设置面板打开（暂停菜单浮层按钮）");
             Open = true;
         }
 
         internal void Close()
         {
+            if (Open) ModLog.Debug("[UI] 设置面板关闭");
             Open = false;
             _content.CancelKeyCapture();
             ImGuiImeRecovery.RequestClear();

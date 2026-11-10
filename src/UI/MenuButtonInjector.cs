@@ -23,6 +23,7 @@ namespace CasualtiesUnknown.Hotbar
         {
             _onClick = onClick;
             Active = true;
+            ModLog.Debug("[UI] 菜单按钮注入器已启用（等待 PreGen 场景 / PreRunScript.Start）");
             SceneManager.sceneLoaded += OnSceneLoaded;
             if (PreRunScript.instance != null) OnPreRunStarted(PreRunScript.instance);
         }
@@ -50,11 +51,20 @@ namespace CasualtiesUnknown.Hotbar
         private static void InjectOnce(PreRunScript pre)
         {
             if (_onClick == null) return;
-            if (pre == null || pre.loadButton == null) return;
+            if (pre == null) return;
+            if (pre.loadButton == null)
+            {
+                ModLog.Debug("[UI] PreRunScript.loadButton 为空，跳过主菜单按钮注入");
+                return;
+            }
             var parent = pre.transform;
             for (int i = 0; i < parent.childCount; i++)
             {
-                if (parent.GetChild(i).name == InjectedName) return;
+                if (parent.GetChild(i).name == InjectedName)
+                {
+                    ModLog.Debug("[UI] 主菜单按钮已存在，跳过重复注入");
+                    return;
+                }
             }
 
             var clone = UnityEngine.Object.Instantiate(pre.loadButton.gameObject, parent, false);
@@ -93,6 +103,7 @@ namespace CasualtiesUnknown.Hotbar
                 rt.localScale = Vector3.one;
             }
             clone.transform.SetAsLastSibling();
+            ModLog.Debug("[UI] 主菜单按钮注入成功（克隆 PreRunScript.loadButton）");
         }
 
         private static void DestroyLocalizers(GameObject clone)

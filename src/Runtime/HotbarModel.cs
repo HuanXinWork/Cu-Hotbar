@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
@@ -42,6 +43,7 @@ namespace CasualtiesUnknown.Hotbar
                 _items[index] = null;
                 if (!_cfg.AutoRefill.Value)
                 {
+                    ModLog.Debug($"[Slot] 槽位 #{index + 1}（索引 {index}）物品已离身且 AutoRefill 关闭，已清除绑定");
                     _ids[index] = "";
                     if (index == _activeIndex) ClearActive();
                     SaveForCurrentRun();
@@ -211,6 +213,8 @@ namespace CasualtiesUnknown.Hotbar
             {
                 if (!ItemMover.Restore(body, prev, _activeOrigin))
                 {
+                    ModLog.Debug($"[Slot] 还原槽位 #{_activeIndex + 1}（索引 {_activeIndex}）物品="
+                        + HotbarRuntime.DescribeItem(prev) + " 失败，已清除该槽绑定");
                     Clear(_activeIndex);
                 }
             }
@@ -252,6 +256,19 @@ namespace CasualtiesUnknown.Hotbar
                 _items[i] = null;
             }
             ClearActive();
+            LogLoadedLinks(_runId, ids);
+        }
+
+        /// <summary>只在换角色时打：确认到底载入了哪份槽位文件、几个非空槽。</summary>
+        [Conditional("DEBUG")]
+        private void LogLoadedLinks(int runId, List<string> ids)
+        {
+            int filled = 0;
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (!string.IsNullOrEmpty(ids[i])) filled++;
+            }
+            ModLog.Debug($"[Slot] 载入 runId={runId} 的槽位绑定：文件内 {ids.Count} 条，非空 {filled} 条，当前槽位总数 {_ids.Length}");
         }
 
         internal void SaveForCurrentRun()

@@ -17,10 +17,20 @@ namespace CasualtiesUnknown.Hotbar
                 Func<string> title = () => HotbarI18n.T("tab.title");
                 Func<string> status = () => "由 CuHotbar 提供";
                 var fn3 = AccessTools.Method(type, "Register", new[] { typeof(Func<string>), typeof(Action), typeof(Func<string>) });
-                if (fn3 != null) { fn3.Invoke(null, new object[] { title, draw, status }); return true; }
+                if (fn3 != null)
+                {
+                    fn3.Invoke(null, new object[] { title, draw, status });
+                    ModLog.Debug("[Interop] ExternalTabRegistry.Register(Func<string>, Action, Func<string>) 注册成功");
+                    return true;
+                }
                 var fn = AccessTools.Method(type, "Register", new[] { typeof(Func<string>), typeof(Action) });
-                if (fn == null) return false;
+                if (fn == null)
+                {
+                    ModLog.Debug("[Interop] ExternalTabRegistry 无 2/3 参 Register 重载，注册失败");
+                    return false;
+                }
                 fn.Invoke(null, new object[] { title, draw });
+                ModLog.Debug("[Interop] ExternalTabRegistry.Register(Func<string>, Action) 注册成功");
                 return true;
             }
             catch (Exception ex) { ModLog.Warning($"注册 SaveManager 侧栏失败：{ex.Message}"); return false; }

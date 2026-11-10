@@ -2,6 +2,16 @@
 
 > 中文更新日志：见 [changes.md](changes.md)
 
+## v1.0.8
+
+### Fixed
+
+The About page repo and release links now point at Cu-Hotbar's own repository; they previously pointed at Cu-SaveManager by mistake.
+
+### Other
+
+Added Debug-only logging; release builds contain no debug strings.
+
 ## v1.0.7
 
 ### Added

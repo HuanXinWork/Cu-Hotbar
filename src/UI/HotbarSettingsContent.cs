@@ -78,8 +78,8 @@ namespace CasualtiesUnknown.Hotbar
             GUILayout.Space(16f);
             GUILayout.Label(HotbarI18n.T("about.sec_links"), CenterTitleStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(6f);
-            DrawLinkButton(HotbarI18n.T("about.link_repo"), "https://github.com/HuanXinWork/Cu-SaveManager");
-            DrawLinkButton(HotbarI18n.T("about.link_release"), "https://github.com/HuanXinWork/Cu-SaveManager/releases/latest");
+            DrawLinkButton(HotbarI18n.T("about.link_repo"), "https://github.com/HuanXinWork/Cu-Hotbar");
+            DrawLinkButton(HotbarI18n.T("about.link_release"), "https://github.com/HuanXinWork/Cu-Hotbar/releases/latest");
 
             GUILayout.Space(16f);
             GUILayout.Label(HotbarI18n.T("about.sec_credits"), CenterTitleStyle, GUILayout.ExpandWidth(true));
