@@ -26,14 +26,28 @@ jobs:
 
       - name: Build Release
         shell: pwsh
-        run: dotnet build CuHotbar.csproj -c Release --nologo
+        run: dotnet build CuHotbar.csproj -c Release --nologo --no-incremental
 
-      - name: Upload CuHotbar
+      - name: Build Debug
+        shell: pwsh
+        run: dotnet build CuHotbar.csproj -c Debug --nologo --no-incremental
+
+      - name: Upload CuHotbar (Release)
         uses: actions/upload-artifact@v4
         with:
           name: CuHotbar
           path: |
             bin/Release/CuHotbar.dll
             bin/Release/CuHotbar.pdb
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload CuHotbar (Debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CuHotbar-Debug
+          path: |
+            bin/Debug/CuHotbar.dll
+            bin/Debug/CuHotbar.pdb
           if-no-files-found: error
           retention-days: 30

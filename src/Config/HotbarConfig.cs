@@ -1,16 +1,14 @@
 using System.Collections.Generic;
-using BepInEx;
 using BepInEx.Configuration;
 using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>
-    /// 全局（非按角色）配置：槽位数、显示位置、每槽切换键、使用键、面板快捷键。
-    /// </summary>
+    /// <summary>管理快捷栏布局、行为开关与按键的持久化配置。</summary>
     internal sealed class HotbarConfig
     {
         internal const int DefaultKeyedSlots = 9;
+        internal const int MaxSlots = 64;
 
         private static readonly KeyboardShortcut Unbound = new KeyboardShortcut(KeyCode.None);
 
@@ -44,16 +42,16 @@ namespace CasualtiesUnknown.Hotbar
         {
             _config = config;
             SlotCount = config.Bind("Hotbar", "SlotCount", 9,
-                new ConfigDescription("快捷栏槽位数量。", new AcceptableValueRange<int>(1, int.MaxValue)));
+                new ConfigDescription("快捷栏槽位数量。", new AcceptableValueRange<int>(1, MaxSlots)));
             RowCount = config.Bind("Hotbar", "RowCount", 1,
-                new ConfigDescription("快捷栏排数；横排为行数、竖排为列数，槽位按网格分布。", new AcceptableValueRange<int>(1, int.MaxValue)));
+                new ConfigDescription("快捷栏排数；横排为行数，竖排为列数。", new AcceptableValueRange<int>(1, MaxSlots)));
             Vertical = config.Bind("Hotbar", "Vertical", false,
                 "排列方向：false=横排（默认靠下），true=竖排（默认靠右）。");
             Visible = config.Bind("Hotbar", "Visible", true, "是否显示快捷栏。");
             Scale = config.Bind("Hotbar", "Scale", 1.0f,
                 new ConfigDescription("快捷栏整体缩放。", new AcceptableValueRange<float>(0.5f, 2.0f)));
             BackgroundAlpha = config.Bind("Hotbar", "BackgroundAlpha", 0.55f,
-                new ConfigDescription("槽位背景与边框透明度（不影响物品图标）。", new AcceptableValueRange<float>(0f, 1f)));
+                new ConfigDescription("槽位背景与边框透明度。", new AcceptableValueRange<float>(0f, 1f)));
 
             AnchorX = config.Bind("Position", "AnchorX", 0.5f,
                 new ConfigDescription("屏幕锚点 X（0 左 1 右）。", new AcceptableValueRange<float>(0f, 1f)));
@@ -64,36 +62,35 @@ namespace CasualtiesUnknown.Hotbar
 
             UseItemHotkey = config.Bind("Hotkeys", "UseItemHotkey",
                 new KeyboardShortcut(KeyCode.Mouse1, KeyCode.LeftShift),
-                "使用主手物品的按键，支持组合键（如 Shift+鼠标右键）。未绑定则关闭该功能。");
+                "使用当前物品的快捷键，默认 Shift+鼠标右键；未绑定则关闭。");
             ToggleSettingsHotkey = config.Bind("Hotkeys", "ToggleSettingsHotkey", Unbound,
-                "打开 / 关闭快捷栏设置面板。默认未绑定。");
+                "打开或关闭独立设置面板。默认未绑定。");
 
             ShowLogInConsole = config.Bind("Misc", "ShowInConsole", false,
-                "是否把模组日志同步打印到游戏内控制台（` 键打开）。");
+                "是否把模组日志同步输出到游戏内控制台。");
             AcceptUpdateNotice = config.Bind("Misc", "AcceptUpdateNotice", true,
-                "是否在启动时检查 GitHub 新版本并在游戏内提示。关闭则不检测不提示。");
+                "是否在启动时检查 GitHub 新版本并在主菜单提示。");
             EnableScroll = config.Bind("Hotbar", "EnableScroll", true,
-                "鼠标滚轮切换当前选中槽并切到主手。");
+                "鼠标滚轮切换当前选中槽。");
             AutoRefill = config.Bind("Hotbar", "AutoRefill", true,
-                "槽内物品丢出或用尽消失后，若身上仍有同种物品则自动补上，不取消绑定。");
+                "槽内物品丢出或用尽后，身上仍有同种物品时自动补充。");
             WarnOnDrop = config.Bind("Hotbar", "WarnOnDrop", true,
-                "切换时主手物品因背包已满而掉落时，在屏幕给出提示。");
+                "切换时物品因无空槽与背包空间而掉落时弹出提示。");
             SafeQuickUse = config.Bind("Hotbar", "SafeQuickUse", true,
-                "快捷安全使用：消耗品（食物/饮品/口服药）按槽位键只选中不切主手，由使用键使用；其余物品仍切主手，使用键只作用于主手物品。");
+                "安全消耗品（食物/饮品/口服药）选中时不切主手，按使用键直接服用；其余物品切主手使用。");
             AutoReload = config.Bind("Hotbar", "AutoReload", true,
-                "自动装填：主手持枪且枪内缺弹（缺弹夹 / 弹仓未满 / 已上膛但膛空）时，自动从背包扫描匹配该枪 ammoType 的弹药装填一发。");
+                "主手持枪缺弹时自动从身上匹配弹药装填。");
             PreferredLanguage = config.Bind("I18n", "PreferredLanguage", "auto",
-                "界面语言：auto=跟随游戏；zh=强制中文；en=强制英文。该值会写入配置文件并在重启后保留。");
+                "界面语言：auto=跟随游戏；zh=强制中文；en=强制英文。");
         }
 
         internal static bool TriggeredThisFrame(ConfigEntry<KeyboardShortcut> entry)
         {
             var sc = entry.Value;
-            if (sc.MainKey == KeyCode.None) return false;
-            return sc.IsDown();
+            return sc.MainKey != KeyCode.None && sc.IsDown();
         }
 
-        /// <summary>第 index（0 基）槽位的切换键，按需 Bind；前 9 槽默认小键盘 1-9，其余默认未绑。</summary>
+        /// <summary>按需绑定第 index（0 基）槽热键，前 9 槽默认小键盘 1-9。</summary>
         internal ConfigEntry<KeyboardShortcut> SlotHotkey(int index)
         {
             if (_slotHotkeys.TryGetValue(index, out var entry)) return entry;

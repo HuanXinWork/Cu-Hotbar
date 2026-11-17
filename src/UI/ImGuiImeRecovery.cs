@@ -2,10 +2,7 @@ using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>
-    /// 释放 IMGUI / IME 残留焦点，避免快捷栏按键在输入法使用后失效。
-    /// 独立窗口无 TextField；合并到 SaveManager 时仍可能受全局 IME 状态影响。
-    /// </summary>
+    /// <summary>面板关闭后在 Layout 阶段释放 IMGUI 残留键盘焦点，防止输入法占用导致热键失效。</summary>
     internal static class ImGuiImeRecovery
     {
         private static bool _pendingClear;
@@ -19,13 +16,13 @@ namespace CasualtiesUnknown.Hotbar
 
         internal static void TickOnGui(bool textInputExpected)
         {
-            if (textInputExpected) return;
-            if (!_pendingClear) return;
+            if (textInputExpected || !_pendingClear) return;
 
             var ev = Event.current;
             if (ev == null || ev.type != EventType.Layout) return;
 
             GUI.FocusControl(null);
+            GUIUtility.keyboardControl = 0;
             _pendingClear = false;
         }
     }

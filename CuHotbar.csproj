@@ -6,12 +6,24 @@
     <RootNamespace>CasualtiesUnknown.Hotbar</RootNamespace>
     <LangVersion>9</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
     <Description>Casualties Unknown — 快捷物品栏 mod</Description>
 
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <DebugType>portable</DebugType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <Optimize>false</Optimize>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DefineConstants>TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>

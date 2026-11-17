@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>极简 i18n：按 Locale.currentLangName 选择中英文，找不到 key 时回落 key 本身。</summary>
+    /// <summary>按配置偏好、游戏 Locale 或系统语言提供中英文文案翻译。</summary>
     internal static class HotbarI18n
     {
         private static readonly string[] ChineseKeywords =
@@ -127,12 +129,13 @@ namespace CasualtiesUnknown.Hotbar
             ["about.sec_deps"] = "Dependencies & thanks",
         };
 
-        private static Dictionary<string, string> Current
+        private static Dictionary<string, string> Current => UseChinese() ? _zh : _en;
+
+        internal static string NormalizeLanguageMode(string mode)
         {
-            get
-            {
-                return UseChinese() ? _zh : _en;
-            }
+            if (string.IsNullOrWhiteSpace(mode)) return "auto";
+            mode = mode.Trim().ToLowerInvariant();
+            return mode == "zh" || mode == "en" ? mode : "auto";
         }
 
         private static bool UseChinese()
@@ -144,7 +147,12 @@ namespace CasualtiesUnknown.Hotbar
                 case "en":
                     return false;
                 default:
-                    return IsChineseLocaleName(ReadCurrentLanguageName());
+                    string lang = ReadCurrentLanguageName();
+                    if (!string.IsNullOrEmpty(lang)) return IsChineseLocaleName(lang);
+                    var sys = Application.systemLanguage;
+                    return sys == SystemLanguage.Chinese
+                           || sys == SystemLanguage.ChineseSimplified
+                           || sys == SystemLanguage.ChineseTraditional;
             }
         }
 
@@ -159,66 +167,40 @@ namespace CasualtiesUnknown.Hotbar
             return name;
         }
 
-        private static string NormalizeLanguageMode(string mode)
-        {
-            if (string.IsNullOrWhiteSpace(mode)) return "auto";
-            mode = mode.Trim().ToLowerInvariant();
-            return mode == "zh" || mode == "en" ? mode : "auto";
-        }
-
         private static bool IsChineseLocaleName(string name)
         {
             string normalized = StripRichText(name).Trim();
-            if (string.IsNullOrEmpty(normalized))
-            {
-                return false;
-            }
+            if (string.IsNullOrEmpty(normalized)) return false;
 
-            if (normalized.StartsWith("zh", System.StringComparison.OrdinalIgnoreCase)
-                || normalized.StartsWith("WC", System.StringComparison.OrdinalIgnoreCase))
+            // "WC" 为社区汉化包与旧版中文语言包使用的标识前缀
+            if (normalized.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("WC", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
             for (int i = 0; i < ChineseKeywords.Length; i++)
             {
-                if (normalized.IndexOf(ChineseKeywords[i], System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
+                if (normalized.IndexOf(ChineseKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
                     return true;
-                }
             }
-
             return false;
         }
 
         private static string StripRichText(string value)
         {
             if (string.IsNullOrEmpty(value) || value.IndexOf('<') < 0)
-            {
                 return value ?? string.Empty;
-            }
 
-            var sb = new System.Text.StringBuilder(value.Length);
+            var sb = new StringBuilder(value.Length);
             bool inTag = false;
             for (int i = 0; i < value.Length; i++)
             {
                 char ch = value[i];
-                if (ch == '<')
-                {
-                    inTag = true;
-                    continue;
-                }
-                if (ch == '>')
-                {
-                    inTag = false;
-                    continue;
-                }
-                if (!inTag)
-                {
-                    sb.Append(ch);
-                }
+                if (ch == '<') { inTag = true; continue; }
+                if (ch == '>') { inTag = false; continue; }
+                if (!inTag) sb.Append(ch);
             }
-
             return sb.ToString();
         }
 
@@ -231,7 +213,11 @@ namespace CasualtiesUnknown.Hotbar
         {
             string fmt = T(key);
             try { return string.Format(fmt, args); }
-            catch { return fmt; }
+            catch (Exception ex)
+            {
+                ModLog.Warning("I18n", $"文案格式化失败 key={key}：{ex.Message}");
+                return fmt;
+            }
         }
     }
 }

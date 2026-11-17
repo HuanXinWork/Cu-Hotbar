@@ -2,10 +2,7 @@ using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>
-    /// 黑底白线条风格 GUISkin。在 OnGUI 顶层 push、绘制结束 pop 即可全局生效。
-    /// 不依赖 UnityEngine.TextRenderingModule（IMGUIModule 自带的 GUISkin / GUIStyle 已够用）。
-    /// </summary>
+    /// <summary>设置面板黑白线条风格 GUISkin 与基础几何绘制辅助。</summary>
     internal static class BlackWhiteSkin
     {
         private static GUISkin _skin;
@@ -25,6 +22,9 @@ namespace CasualtiesUnknown.Hotbar
         private static GUIStyle _lineStyle;
         private static GUIStyle _iconBtnStyle;
         private static GUIStyle _rowLabelStyle;
+        private static GUIStyle _hintLabelStyle;
+        private static GUIStyle _centerTitleStyle;
+        private static GUIStyle _centerLabelStyle;
 
         internal static GUIStyle HeaderStyle => _hStyle;
         internal static GUIStyle HeaderButtonStyle => _hButtonStyle;
@@ -34,11 +34,13 @@ namespace CasualtiesUnknown.Hotbar
         internal static GUIStyle LineStyle => _lineStyle;
         internal static GUIStyle IconBtnStyle => _iconBtnStyle;
         internal static GUIStyle RowLabelStyle => _rowLabelStyle;
+        internal static GUIStyle HintLabelStyle => _hintLabelStyle;
+        internal static GUIStyle CenterTitleStyle => _centerTitleStyle;
+        internal static GUIStyle CenterLabelStyle => _centerLabelStyle;
         internal static Texture2D LineTex => _line;
 
         private static GUISkin _previousSkin;
 
-        /// <summary>确保自定义样式已构建，供不经 Push 的合并绘制场景调用。</summary>
         internal static void EnsureStyles() => EnsureBuilt();
 
         internal static void Push()
@@ -53,25 +55,38 @@ namespace CasualtiesUnknown.Hotbar
             GUI.skin = _previousSkin;
         }
 
-        /// <summary>画一条 1px 横线（用于卡片分隔等场合）。</summary>
+        internal static void Dispose()
+        {
+            DestroyObject(ref _skin);
+            DestroyTexture(ref _bgPanel);
+            DestroyTexture(ref _bgButton);
+            DestroyTexture(ref _bgButtonHover);
+            DestroyTexture(ref _bgCard);
+            DestroyTexture(ref _bgTab);
+            DestroyTexture(ref _bgTabActive);
+            DestroyTexture(ref _line);
+            _hStyle = null;
+            _hButtonStyle = null;
+            _cardStyle = null;
+            _tabStyle = null;
+            _tabActiveStyle = null;
+            _lineStyle = null;
+            _iconBtnStyle = null;
+            _rowLabelStyle = null;
+            _hintLabelStyle = null;
+            _centerTitleStyle = null;
+            _centerLabelStyle = null;
+            _previousSkin = null;
+        }
+
         internal static void DrawHLine(Rect rect)
         {
             EnsureBuilt();
             GUI.DrawTexture(rect, _line, ScaleMode.StretchToFill);
         }
 
-        /// <summary>给一个矩形画 1px 白色细边框。</summary>
-        internal static void DrawBorder(Rect rect)
-        {
-            EnsureBuilt();
-            // 上 / 下 / 左 / 右 各一条 1px
-            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 1f), _line, ScaleMode.StretchToFill);
-            GUI.DrawTexture(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), _line, ScaleMode.StretchToFill);
-            GUI.DrawTexture(new Rect(rect.x, rect.y, 1f, rect.height), _line, ScaleMode.StretchToFill);
-            GUI.DrawTexture(new Rect(rect.xMax - 1f, rect.y, 1f, rect.height), _line, ScaleMode.StretchToFill);
-        }
+        internal static void DrawBorder(Rect rect) => DrawBorder(rect, 1f);
 
-        /// <summary>给矩形画指定厚度的白色边框。</summary>
         internal static void DrawBorder(Rect rect, float thickness)
         {
             EnsureBuilt();
@@ -81,7 +96,6 @@ namespace CasualtiesUnknown.Hotbar
             GUI.DrawTexture(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), _line, ScaleMode.StretchToFill);
         }
 
-        /// <summary>用两条对角线在矩形里画一个白色 "X"。</summary>
         internal static void DrawCloseX(Rect rect, float thickness = 2f)
         {
             EnsureBuilt();
@@ -89,19 +103,15 @@ namespace CasualtiesUnknown.Hotbar
             DrawDiagonalLine(rect.x, rect.yMax, rect.xMax, rect.y, thickness);
         }
 
-        /// <summary>在矩形里画一个简化的铅笔图标轮廓（一根斜线 + 两个端点的小线段）。</summary>
         internal static void DrawPencil(Rect rect, float thickness = 2f)
         {
             EnsureBuilt();
-            // 主体斜线：左下 → 右上
             float pad = thickness;
             float x1 = rect.x + pad, y1 = rect.yMax - pad;
             float x2 = rect.xMax - pad, y2 = rect.y + pad;
             DrawDiagonalLine(x1, y1, x2, y2, thickness);
-            // 笔尖：左下角的两条短线，与主体斜线相邻
             DrawDiagonalLine(x1, y1, x1 + rect.width * 0.18f, y1 - rect.height * 0.05f, thickness);
             DrawDiagonalLine(x1, y1, x1 + rect.width * 0.05f, y1 - rect.height * 0.18f, thickness);
-            // 笔尾：右上角短横，与主体斜线相邻
             DrawDiagonalLine(x2, y2, x2 - rect.width * 0.18f, y2 + rect.height * 0.05f, thickness);
             DrawDiagonalLine(x2, y2, x2 - rect.width * 0.05f, y2 + rect.height * 0.18f, thickness);
         }
@@ -112,7 +122,7 @@ namespace CasualtiesUnknown.Hotbar
             float dx = x2 - x1;
             float dy = y2 - y1;
             float length = Mathf.Sqrt(dx * dx + dy * dy);
-            // 沿对角线铺轴对齐小方块，避免 RotateAroundPivot 与外层 Scale 矩阵复合时的纹理走样
+            // 沿对角线铺轴对齐小方块，避免旋转矩阵与外层缩放矩阵复合导致纹理走样
             int steps = Mathf.Max(2, Mathf.CeilToInt(length / Mathf.Max(0.5f, thickness * 0.5f)));
             for (int i = 0; i <= steps; i++)
             {
@@ -137,7 +147,7 @@ namespace CasualtiesUnknown.Hotbar
             _line = MakeColorTex(255, 255, 255, 255);
 
             _skin = ScriptableObject.CreateInstance<GUISkin>();
-            // 用默认 skin 的字段初始化每个 GUIStyle
+            _skin.hideFlags = HideFlags.HideAndDontSave;
             CopyDefaultsInto(_skin);
 
             ApplyMonochrome(_skin.box, _bgPanel, Color.white);
@@ -151,10 +161,8 @@ namespace CasualtiesUnknown.Hotbar
             ApplyMonochrome(_skin.horizontalSliderThumb, _line, Color.black);
             ApplyMonochrome(_skin.verticalScrollbar, _bgCard, Color.white);
             ApplyMonochrome(_skin.verticalScrollbarThumb, _line, Color.black);
-            // ScrollView 自身的背景（之前漏改导致顶部出现白色横条）
             ApplyMonochrome(_skin.scrollView, _bgPanel, Color.white);
 
-            // 加大 slider 与 thumb 的尺寸，让圆点不被 20px 字号文字遮住
             _skin.horizontalSlider.fixedHeight = 28f;
             _skin.horizontalSlider.padding = new RectOffset(2, 2, 10, 10);
             _skin.horizontalSliderThumb.fixedHeight = 44f;
@@ -231,6 +239,20 @@ namespace CasualtiesUnknown.Hotbar
                 clipping = TextClipping.Overflow,
                 alignment = TextAnchor.MiddleLeft,
             };
+
+            _hintLabelStyle = new GUIStyle(_skin.label)
+            {
+                wordWrap = true,
+                clipping = TextClipping.Clip,
+                alignment = TextAnchor.UpperLeft,
+            };
+
+            _centerTitleStyle = new GUIStyle(_hStyle) { alignment = TextAnchor.MiddleCenter };
+            _centerLabelStyle = new GUIStyle(_skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = true,
+            };
         }
 
         private static void CopyDefaultsInto(GUISkin dst)
@@ -255,14 +277,15 @@ namespace CasualtiesUnknown.Hotbar
         {
             if (bg != null)
             {
+                Texture2D activeBg = hoverBg != null ? hoverBg : bg;
                 s.normal.background = bg;
                 s.onNormal.background = bg;
-                s.active.background = hoverBg ?? bg;
-                s.onActive.background = hoverBg ?? bg;
+                s.active.background = activeBg;
+                s.onActive.background = activeBg;
                 s.focused.background = bg;
                 s.onFocused.background = bg;
-                s.hover.background = hoverBg ?? bg;
-                s.onHover.background = hoverBg ?? bg;
+                s.hover.background = activeBg;
+                s.onHover.background = activeBg;
             }
             s.normal.textColor = text;
             s.onNormal.textColor = text;
@@ -278,13 +301,11 @@ namespace CasualtiesUnknown.Hotbar
         {
             var t = new Texture2D(2, 2, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
             var c = new Color32(r, g, b, a);
-            var pixels = new Color32[4] { c, c, c, c };
-            t.SetPixels32(pixels);
+            t.SetPixels32(new[] { c, c, c, c });
             t.Apply();
             return t;
         }
 
-        /// <summary>生成带白边的九宫格纹理：外圈 borderPx 像素为边色，内部为填充色。配 GUIStyle.border 用。</summary>
         private static Texture2D MakeBorderedTex(byte fr, byte fg, byte fb, byte fa,
             byte br, byte bg, byte bb, byte ba, int borderPx)
         {
@@ -309,6 +330,23 @@ namespace CasualtiesUnknown.Hotbar
             t.Apply();
             return t;
         }
+
+        private static void DestroyTexture(ref Texture2D tex)
+        {
+            if (tex != null)
+            {
+                try { Object.Destroy(tex); } catch { }
+                tex = null;
+            }
+        }
+
+        private static void DestroyObject<T>(ref T obj) where T : Object
+        {
+            if (obj != null)
+            {
+                try { Object.Destroy(obj); } catch { }
+                obj = null;
+            }
+        }
     }
 }
-

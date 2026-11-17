@@ -2,6 +2,22 @@
 
 > 中文更新日志：见 [changes.md](changes.md)
 
+## v1.0.9
+
+### Fixed
+
+- Fixed item switching remotely stashing held items into dropped ground backpacks, placing items into the mouth slot (`slots[2]`), or forcing items into dismembered/incapacitated hands; added guards for `onlyHoldInHands` tools and worn gear.
+- Fixed destroyed consumables bypassing `AutoRefill = false` and rebinding another stack item, and eliminated per-frame inventory scan allocations.
+- Fixed consumable detection misclassifying bleach, mindwipe, IV saline/Ringer's solution, empty bottles, and slot-replacing items as safe quick-use consumables; added `nondescriptcan` detection.
+- Fixed auto-reload inserting 0-round magazines, consuming loose rounds during semi/full-auto gas cycling, and stacking reload audio without cooldown; switched to `Body.CombineItems` for multiplayer sync and local Milky direct-feed magazine support.
+- Fixed left-clicking hotbar slots punching/firing through UI by assigning the `"UI"` layer, restored 9-slice slot borders, added container weight bars, supported `Alt` `ItemLabel` hover binding, and updated built-in font resolution for Unity 2022.3.
+- Blocked background hotbar keys and scroll switching while standalone/CuSaveManager panels, console, multiplayer chat, or input fields are active; added standalone raycast blocking and `BlackWhiteSkin` texture cleanup.
+
+### Changed
+
+- Wrapped multiplayer item swaps in `Casualties: Together` `MoveCommit` gestures to prevent false ground-drop packets on clients, and stabilized client-side slot persistence per character type.
+- Upgraded the tiered logging system: Release builds emit concise lifecycle/warning logs with all debug calls and strings stripped at compile time; Debug builds enable full scoped flow tracing, grey in-game console output, and a dedicated rotating `hotbarData/CuHotbar.debug.log` with millisecond timestamps and frame numbers; CI now publishes both Release and Debug artifacts.
+
 ## v1.0.8
 
 ### Fixed

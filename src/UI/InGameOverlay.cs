@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>独立模式下 ESC 暂停面板打开时的游戏内浮动唤起按钮。</summary>
+    /// <summary>独立模式下暂停菜单打开时绘制的游戏内设置面板唤起按钮。</summary>
     internal sealed class InGameOverlay
     {
         private const float ButtonWidth = 320f;
@@ -12,6 +12,7 @@ namespace CasualtiesUnknown.Hotbar
 
         internal static bool ShouldShow()
         {
+            if (SettingsMenu.instance != null || UiBlocker.IsBlocking) return false;
             return PauseMenuCompat.IsPauseMenuOpen();
         }
 

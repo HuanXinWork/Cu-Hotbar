@@ -7,38 +7,47 @@ using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>
-    /// 按角色（runId=cId）持久化快捷栏槽位指向。每个 runId 一份 json，存物品 id 列表，空槽为空串。
-    /// </summary>
+    /// <summary>按角色标识读写快捷栏槽位物品 ID 列表。</summary>
     internal sealed class HotbarStore
     {
-        private readonly string _dataRoot;
+        private const int MpClientKeyBase = -100;
+
+        internal string DataRoot { get; }
 
         internal HotbarStore()
         {
-            _dataRoot = ResolveDataRoot();
-            try { Directory.CreateDirectory(_dataRoot); }
-            catch (Exception ex) { ModLog.Warning($"创建 hotbarData 目录失败：{ex.Message}"); }
+            DataRoot = ResolveDataRoot();
+            try { Directory.CreateDirectory(DataRoot); }
+            catch (Exception ex) { ModLog.Warning("Store", $"创建 hotbarData 目录失败：{ex.Message}"); }
         }
 
-        /// <summary>当前角色 runId，取自 WoundView.cInfo[2]；读不到返回 0（未识别）。</summary>
+        /// <summary>返回当前局存储键；未就绪返回 0。</summary>
         internal static int CurrentRunId()
         {
             try
             {
+                // 联机客户端每次进图都会重随 cInfo[2]，改按角色类型固定负数键避免丢失绑定与堆积文件
+                if (MultiplayerCompat.IsClient)
+                {
+                    var body = PlayerCamera.main != null ? PlayerCamera.main.body : null;
+                    if (body == null) return 0;
+                    return MpClientKeyBase - Mathf.Clamp(body.charType, 0, 99);
+                }
+
                 var view = WoundView.view;
                 if (view != null && view.cInfo != null && view.cInfo.Length >= 3)
                     return view.cInfo[2];
             }
             catch (Exception ex)
             {
-                ModLog.Warning($"读取 runId 失败：{ex.Message}");
+                ModLog.Warning("Store", $"读取 runId 失败：{ex.Message}");
             }
             return 0;
         }
 
         internal List<string> Load(int runId)
         {
+            if (runId == 0) return new List<string>();
             string path = SlotsPath(runId);
             try
             {
@@ -48,30 +57,38 @@ namespace CasualtiesUnknown.Hotbar
             }
             catch (Exception ex)
             {
-                ModLog.Warning($"加载快捷栏配置失败 runId={runId}：{ex.Message}");
+                ModLog.Warning("Store", $"加载快捷栏配置失败 runId={runId}：{ex.Message}");
                 return new List<string>();
             }
         }
 
         internal void Save(int runId, List<string> slotItemIds)
         {
+            if (runId == 0) return;
             string path = SlotsPath(runId);
             try
             {
                 File.WriteAllText(path, JsonConvert.SerializeObject(slotItemIds ?? new List<string>()));
+                ModLog.Debug("Store", $"已保存槽位绑定 runId={runId} -> {Path.GetFileName(path)}");
             }
             catch (Exception ex)
             {
-                ModLog.Warning($"保存快捷栏配置失败 runId={runId}：{ex.Message}");
+                ModLog.Warning("Store", $"保存快捷栏配置失败 runId={runId}：{ex.Message}");
             }
         }
 
-        private string SlotsPath(int runId) => Path.Combine(_dataRoot, runId + ".json");
-
-        private static string ResolveDataRoot()
+        private string SlotsPath(int runId)
         {
-            var asmDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)
-                          ?? Application.persistentDataPath;
+            string fileName = runId <= MpClientKeyBase
+                ? $"mp_client_{MpClientKeyBase - runId}.json"
+                : $"{runId}.json";
+            return Path.Combine(DataRoot, fileName);
+        }
+
+        internal static string ResolveDataRoot()
+        {
+            var asmDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            if (string.IsNullOrEmpty(asmDir)) asmDir = Application.persistentDataPath;
             return Path.Combine(asmDir, "hotbarData");
         }
     }

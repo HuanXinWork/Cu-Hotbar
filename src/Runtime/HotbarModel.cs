@@ -1,17 +1,21 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>
-    /// 快捷栏运行时模型：维护槽位指向（运行时 Item 引用 + 持久化物品 id），
-    /// 负责按角色加载/保存、引用失效后按 id 重绑定、激活槽位切到主手并归还上一物品。
-    /// </summary>
+    /// <summary>维护快捷栏槽位绑定、随身物品快照、主手切换及自动补充状态。</summary>
     internal sealed class HotbarModel
     {
         private readonly HotbarConfig _cfg;
         private readonly HotbarStore _store;
+
+        private readonly List<Item> _bodyItems = new List<Item>();
+        private readonly HashSet<Item> _bodyItemSet = new HashSet<Item>();
+        private readonly Dictionary<string, int> _bodyIdCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        private int _snapshotFrame = -1;
+        private Body _snapshotBody;
 
         private Item[] _items;
         private string[] _ids;
@@ -31,30 +35,36 @@ namespace CasualtiesUnknown.Hotbar
 
         internal int SlotCount => _ids.Length;
 
-        /// <summary>第 index 槽用于显示的物品：离身引用置空，AutoRefill 开则按 id 解析身上同种，关则清链。</summary>
+        /// <summary>解析第 index 槽随身物品；已跟踪实例销毁或离身时按 AutoRefill 重绑同种或清除。</summary>
         internal Item GetItem(int index)
         {
             if (index < 0 || index >= _items.Length) return null;
             var body = CurrentBody();
             var cur = _items[index];
-            if (cur != null && body != null && !InBody(body, cur))
+
+            // 用 ReferenceEquals 区分“尚未解析（null）”与“曾绑定但被 Destroy 销毁（Unity fake-null）”
+            if (!ReferenceEquals(cur, null) && body != null && (cur == null || !InBody(body, cur)))
             {
                 cur = null;
                 _items[index] = null;
                 if (!_cfg.AutoRefill.Value)
                 {
-                    ModLog.Debug($"[Slot] 槽位 #{index + 1}（索引 {index}）物品已离身且 AutoRefill 关闭，已清除绑定");
+                    ModLog.Debug("Slot", $"槽位 #{index + 1}（索引 {index}）物品耗尽或离身且 AutoRefill 关闭，已清除绑定");
                     _ids[index] = "";
                     if (index == _activeIndex) ClearActive();
                     SaveForCurrentRun();
                     return null;
                 }
             }
-            if (cur == null && body != null && !string.IsNullOrEmpty(_ids[index])
-                && body.FindByIdThorough(_ids[index], out var found))
+
+            if (cur == null && body != null && !string.IsNullOrEmpty(_ids[index]))
             {
-                _items[index] = found;
-                cur = found;
+                var found = FindCandidateInBody(body, _ids[index]);
+                if (found != null)
+                {
+                    _items[index] = found;
+                    cur = found;
+                }
             }
             return cur;
         }
@@ -65,39 +75,50 @@ namespace CasualtiesUnknown.Hotbar
             return _ids[index] ?? "";
         }
 
-        /// <summary>身上（含容器/穿戴）同 id 物品数量。</summary>
         internal int CountInBody(int index)
         {
             string id = GetId(index);
             if (string.IsNullOrEmpty(id)) return 0;
             var body = CurrentBody();
             if (body == null) return 0;
-            int n = 0;
-            foreach (var it in body.GetAllItemsThorough())
-            {
-                if (it != null && it.id == id) n++;
-            }
-            return n;
+            EnsureBodySnapshot(body);
+            return _bodyIdCounts.TryGetValue(id, out int count) ? count : 0;
         }
 
-        /// <summary>把第 index 槽指向某物品（拖拽落点调用）。一物一槽：先清除该物品在其它槽的绑定。</summary>
+        /// <summary>绑定第 index 槽到指定物品（同种 ID 唯一占槽，自动移除旧槽重复绑定）。</summary>
         internal void Link(int index, Item item)
         {
             if (index < 0 || index >= _ids.Length) return;
+
+            string newId = item != null ? (item.id ?? "") : "";
+            var body = CurrentBody();
+            Item newTracked = item != null && body != null && InBody(body, item) && ItemMover.CanBeHeld(body, item)
+                ? item
+                : null;
+
+            if (_ids[index] == newId && _items[index] == newTracked) return;
+
             if (item != null)
             {
                 for (int i = 0; i < _ids.Length; i++)
                 {
                     if (i == index) continue;
-                    if (_items[i] == item || (!string.IsNullOrEmpty(item.id) && _ids[i] == item.id))
+                    if (_items[i] == item || (!string.IsNullOrEmpty(newId) && _ids[i] == newId))
                     {
                         _items[i] = null;
                         _ids[i] = "";
+                        if (_activeIndex == i) ClearActive();
                     }
                 }
             }
-            _items[index] = item;
-            _ids[index] = item != null ? item.id : "";
+
+            if (_activeIndex == index && _activeItem != newTracked)
+                ClearActive();
+
+            // 指向地面物品或正穿戴在身上的物品时仅记录 ID，待存在可手持实例时再绑定引用
+            _items[index] = newTracked;
+            _ids[index] = newId;
+            ModLog.Flow("Slot", "绑定更新", $"槽位 #{index + 1} -> id='{newId}' 实例就绪={newTracked != null}");
             SaveForCurrentRun();
         }
 
@@ -107,78 +128,120 @@ namespace CasualtiesUnknown.Hotbar
             _items[index] = null;
             _ids[index] = "";
             if (_activeIndex == index) ClearActive();
+            ModLog.Debug("Slot", $"已清空槽位 #{index + 1}（索引 {index}）");
             SaveForCurrentRun();
         }
 
-        /// <summary>第 index 槽绑定的物品是否为安全口服/饮用消耗品（决定选中时是否切主手）。</summary>
         internal bool IsConsumableSlot(int index)
         {
             var body = CurrentBody();
             if (body == null) return false;
             Item target = Resolve(index, body);
-            if (target == null || target.Stats == null) return false;
-            return IsInstantConsumable(target);
+            return target != null && ConsumableClassifier.IsConsumable(target);
         }
 
-        /// <summary>使用键的安全分流：选中槽为消耗品时用其绑定物品（可在背包），否则只使用主手物品。</summary>
+        /// <summary>触发使用键：优先直接服用选中的安全消耗品，否则使用主手物品。</summary>
         internal void UseSelected(int index)
         {
             var body = CurrentBody();
-            if (body == null || !body.conscious || !body.allowUseItem) return;
+            if (body == null || !body.conscious) return;
+            if (!body.allowUseItem)
+            {
+                var cam = PlayerCamera.main;
+                if (cam != null) cam.UseFailUnhappiness();
+                ModLog.Debug("Slot", "使用物品被拒绝：角色情绪低落");
+                return;
+            }
+
+            bool fromConsumableSlot = false;
             Item target = body.GetItem(body.handSlot);
-            if (index >= 0)
+            if (_cfg.SafeQuickUse.Value && index >= 0)
             {
                 Item slotItem = Resolve(index, body);
-                if (slotItem != null && slotItem.Stats != null && IsInstantConsumable(slotItem))
+                if (slotItem != null && ConsumableClassifier.IsConsumable(slotItem))
                 {
                     target = slotItem;
+                    fromConsumableSlot = true;
                 }
             }
-            if (target != null && target.Stats != null && target.Stats.usable)
-            {
-                body.UseItem(target);
-            }
+
+            if (target == null || target.Stats == null || !target.Stats.usable) return;
+            if (target.Stats.destroyAtZeroCondition && target.condition <= 0f) return;
+
+            ModLog.Flow("Slot", fromConsumableSlot ? "服用消耗品" : "使用主手物品",
+                $"目标={HotbarRuntime.DescribeItem(target)} 槽位={(index >= 0 ? $"#{index + 1}" : "无")}");
+            body.UseItem(target);
+            InvalidateSnapshot();
         }
 
-        private static bool IsInstantConsumable(Item item)
-        {
-            return ConsumableClassifier.IsConsumable(item);
-        }
-
-        /// <summary>激活第 index 槽：空槽则收起当前快捷栏物品；否则归还上一物品并把本槽物品切到主手。</summary>
+        /// <summary>将第 index 槽物品切入主手；槽位无可用物品时仅收起当前主手快捷栏物品。</summary>
         internal bool Activate(int index)
         {
             var body = CurrentBody();
             if (body == null || !body.conscious) return false;
 
-            Item target = Resolve(index, body);
+            Item target = ResolveHoldable(index, body);
             if (target == null)
             {
-                RestorePrevious(body);
+                if (!string.IsNullOrEmpty(GetId(index)) && Resolve(index, body) != null)
+                {
+                    ModLog.Debug("Slot", $"激活槽位 #{index + 1} 失败：物品处于穿戴态或不可手持");
+                    return false;
+                }
+
+                bool inGestureEmpty = MultiplayerCompat.BeginMoveGesture();
+                try
+                {
+                    RestorePrevious(body);
+                }
+                finally
+                {
+                    if (inGestureEmpty) MultiplayerCompat.EndMoveGesture(null);
+                    InvalidateSnapshot();
+                }
                 return true;
             }
+
             if (_activeIndex == index && body.GetItem(body.handSlot) == target) return true;
-
-            RestorePrevious(body);
-
-            Item handItem = body.GetItem(body.handSlot);
-            if (handItem != null && handItem != target) ItemMover.Stash(body, handItem);
-
-            _activeOrigin = ItemMover.Probe(body, target);
-            if (!ItemMover.GrabToHand(body, target))
+            if (!ItemMover.CanHoldInHand(body))
             {
-                ClearActive();
+                ModLog.Debug("Slot", $"激活槽位 #{index + 1} 失败：当前主手无法抓握");
                 return false;
             }
-            _activeIndex = index;
-            _activeItem = target;
-            return true;
+
+            bool inGesture = MultiplayerCompat.BeginMoveGesture();
+            try
+            {
+                RestorePrevious(body);
+
+                Item handItem = body.GetItem(body.handSlot);
+                if (handItem != null && handItem != target) ItemMover.Stash(body, handItem);
+
+                _activeOrigin = ItemMover.Probe(body, target);
+                if (!ItemMover.GrabToHand(body, target))
+                {
+                    ClearActive();
+                    return false;
+                }
+                _activeIndex = index;
+                _activeItem = target;
+                return true;
+            }
+            finally
+            {
+                if (inGesture) MultiplayerCompat.EndMoveGesture(target);
+                InvalidateSnapshot();
+            }
         }
 
-        /// <summary>激活槽物品已离身（丢出/用尽）时按 AutoRefill 补同种到主手；被手动挪走则停止跟踪。</summary>
+        /// <summary>激活物品离身时按 AutoRefill 自动补同种，仍在身上但离手则解除跟踪。</summary>
         internal void RefillActiveIfNeeded()
         {
-            if (_activeIndex < 0 || _activeIndex >= _ids.Length) { _activeItem = null; return; }
+            if (_activeIndex < 0 || _activeIndex >= _ids.Length)
+            {
+                _activeItem = null;
+                return;
+            }
             var body = CurrentBody();
             if (body == null || !body.conscious) return;
 
@@ -188,34 +251,60 @@ namespace CasualtiesUnknown.Hotbar
                 return;
             }
 
-            if (!_cfg.AutoRefill.Value) { ClearActive(); return; }
+            if (!_cfg.AutoRefill.Value || !ItemMover.CanHoldInHand(body))
+            {
+                ClearActive();
+                return;
+            }
 
             string id = _ids[_activeIndex];
-            if (!string.IsNullOrEmpty(id) && body.FindByIdThorough(id, out var same))
+            var same = !string.IsNullOrEmpty(id) ? FindHoldableInBody(body, id) : null;
+            if (same != null)
             {
-                _activeOrigin = ItemMover.Probe(body, same);
-                if (ItemMover.GrabToHand(body, same))
+                bool inGesture = MultiplayerCompat.BeginMoveGesture();
+                try
                 {
-                    _items[_activeIndex] = same;
-                    _activeItem = same;
-                    return;
+                    Item residualHand = body.GetItem(body.handSlot);
+                    if (residualHand != null && residualHand != same)
+                        ItemMover.Stash(body, residualHand);
+
+                    var origin = ItemMover.Probe(body, same);
+                    if (ItemMover.GrabToHand(body, same))
+                    {
+                        _activeOrigin = origin;
+                        _items[_activeIndex] = same;
+                        _activeItem = same;
+                        ModLog.Flow("Slot", "自动补货", $"槽位 #{_activeIndex + 1} 已补充同种物品={HotbarRuntime.DescribeItem(same)}");
+                        return;
+                    }
+                }
+                finally
+                {
+                    if (inGesture) MultiplayerCompat.EndMoveGesture(same);
+                    InvalidateSnapshot();
                 }
             }
             ClearActive();
         }
 
-        /// <summary>把上一激活槽的物品放回其原位；放不回则掉地并清除该槽链接。</summary>
         private void RestorePrevious(Body body)
         {
-            if (_activeIndex < 0 || _activeIndex >= _items.Length) { ClearActive(); return; }
+            if (_activeIndex < 0 || _activeIndex >= _items.Length)
+            {
+                ClearActive();
+                return;
+            }
             Item prev = _activeItem;
             if (prev != null && body.GetItem(body.handSlot) == prev)
             {
                 if (!ItemMover.Restore(body, prev, _activeOrigin))
                 {
-                    ModLog.Debug($"[Slot] 还原槽位 #{_activeIndex + 1}（索引 {_activeIndex}）物品="
-                        + HotbarRuntime.DescribeItem(prev) + " 失败，已清除该槽绑定");
-                    Clear(_activeIndex);
+                    _items[_activeIndex] = null;
+                    if (!_cfg.AutoRefill.Value)
+                    {
+                        ModLog.Debug("Slot", $"还原槽位 #{_activeIndex + 1} 失败且 AutoRefill 关闭，已清除绑定");
+                        Clear(_activeIndex);
+                    }
                 }
             }
             ClearActive();
@@ -228,22 +317,76 @@ namespace CasualtiesUnknown.Hotbar
             _activeOrigin = ItemMover.Origin.None;
         }
 
-        /// <summary>逐帧触发各槽实时解析，保持运行时引用与身上物品一致。</summary>
         internal void Refresh()
         {
+            var body = CurrentBody();
+            if (body != null) EnsureBodySnapshot(body);
             for (int i = 0; i < _items.Length; i++)
             {
                 GetItem(i);
             }
         }
 
-        private static bool InBody(Body body, Item item)
+        // 帧内快照仅在同一调度阶段有效；物品变动后或进入 LateUpdate 前须调用 InvalidateSnapshot
+        internal void InvalidateSnapshot() => _snapshotFrame = -1;
+
+        private bool InBody(Body body, Item item)
         {
-            foreach (var it in body.GetAllItemsThorough())
+            if (body == null || item == null) return false;
+            EnsureBodySnapshot(body);
+            return _bodyItemSet.Contains(item);
+        }
+
+        private void EnsureBodySnapshot(Body body)
+        {
+            int frame = Time.frameCount;
+            if (_snapshotFrame == frame && _snapshotBody == body) return;
+
+            _snapshotFrame = frame;
+            _snapshotBody = body;
+            _bodyItems.Clear();
+            _bodyItemSet.Clear();
+            _bodyIdCounts.Clear();
+
+            var all = body.GetAllItemsThorough();
+            for (int i = 0; i < all.Count; i++)
             {
-                if (it == item) return true;
+                var it = all[i];
+                if (it == null) continue;
+                _bodyItems.Add(it);
+                _bodyItemSet.Add(it);
+                if (!string.IsNullOrEmpty(it.id))
+                {
+                    _bodyIdCounts.TryGetValue(it.id, out int n);
+                    _bodyIdCounts[it.id] = n + 1;
+                }
             }
-            return false;
+        }
+
+        private Item FindCandidateInBody(Body body, string id)
+        {
+            var holdable = FindHoldableInBody(body, id);
+            if (holdable != null) return holdable;
+
+            EnsureBodySnapshot(body);
+            for (int i = 0; i < _bodyItems.Count; i++)
+            {
+                var it = _bodyItems[i];
+                if (it != null && it.id == id) return it;
+            }
+            return null;
+        }
+
+        private Item FindHoldableInBody(Body body, string id)
+        {
+            EnsureBodySnapshot(body);
+            for (int i = 0; i < _bodyItems.Count; i++)
+            {
+                var it = _bodyItems[i];
+                if (it != null && it.id == id && ItemMover.CanBeHeld(body, it))
+                    return it;
+            }
+            return null;
         }
 
         internal void LoadForCurrentRun()
@@ -256,10 +399,10 @@ namespace CasualtiesUnknown.Hotbar
                 _items[i] = null;
             }
             ClearActive();
+            InvalidateSnapshot();
             LogLoadedLinks(_runId, ids);
         }
 
-        /// <summary>只在换角色时打：确认到底载入了哪份槽位文件、几个非空槽。</summary>
         [Conditional("DEBUG")]
         private void LogLoadedLinks(int runId, List<string> ids)
         {
@@ -268,7 +411,7 @@ namespace CasualtiesUnknown.Hotbar
             {
                 if (!string.IsNullOrEmpty(ids[i])) filled++;
             }
-            ModLog.Debug($"[Slot] 载入 runId={runId} 的槽位绑定：文件内 {ids.Count} 条，非空 {filled} 条，当前槽位总数 {_ids.Length}");
+            ModLog.Debug("Slot", $"载入 runId={runId}：文件 {ids.Count} 条，非空 {filled} 条，总槽数 {_ids.Length}");
         }
 
         internal void SaveForCurrentRun()
@@ -280,20 +423,36 @@ namespace CasualtiesUnknown.Hotbar
 
         private Item Resolve(int index, Body body)
         {
-            if (index < 0 || index >= _items.Length) return null;
-            if (_items[index] != null) return _items[index];
-            if (string.IsNullOrEmpty(_ids[index])) return null;
-            if (body.FindByIdThorough(_ids[index], out var found))
+            if (index < 0 || index >= _items.Length || body == null) return null;
+            var cached = _items[index];
+            if (cached != null)
             {
-                _items[index] = found;
-                return found;
+                if (InBody(body, cached)) return cached;
+                _items[index] = null;
             }
-            return null;
+            if (string.IsNullOrEmpty(_ids[index])) return null;
+            var found = FindCandidateInBody(body, _ids[index]);
+            if (found != null) _items[index] = found;
+            return found;
+        }
+
+        private Item ResolveHoldable(int index, Body body)
+        {
+            if (index < 0 || index >= _items.Length || body == null) return null;
+            var cached = _items[index];
+            if (cached != null && InBody(body, cached) && ItemMover.CanBeHeld(body, cached))
+                return cached;
+
+            string id = _ids[index];
+            if (string.IsNullOrEmpty(id)) return null;
+            var found = FindHoldableInBody(body, id);
+            if (found != null) _items[index] = found;
+            return found;
         }
 
         private void Resize(int count)
         {
-            count = Mathf.Max(count, 1);
+            count = Mathf.Clamp(count, 1, HotbarConfig.MaxSlots);
             var newItems = new Item[count];
             var newIds = new string[count];
             for (int i = 0; i < count; i++)
@@ -303,6 +462,7 @@ namespace CasualtiesUnknown.Hotbar
             }
             _items = newItems;
             _ids = newIds;
+            if (_activeIndex >= count) ClearActive();
         }
 
         private static Body CurrentBody()

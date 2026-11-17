@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>独立设置窗口（SaveManager 不在场时使用），黑白线条风格。内容委托 HotbarSettingsContent。</summary>
+    /// <summary>未合并到 SaveManager 时使用的黑白风格独立模态设置窗口。</summary>
     internal sealed class HotbarWindow
     {
         private const int WindowId = 0x48425730;
@@ -22,28 +22,37 @@ namespace CasualtiesUnknown.Hotbar
             _content = new HotbarSettingsContent(cfg);
         }
 
+        internal bool IsCapturingHotkey => Open && _content.IsCapturingHotkey;
+
+        internal bool ExpectsTextInput => IsCapturingHotkey;
+
+        internal void CancelKeyCapture() => _content.CancelKeyCapture();
+
         internal void Toggle()
         {
             if (Open) { Close(); return; }
             Open = true;
-            ModLog.Debug("[UI] 设置面板打开（快捷键 / 主菜单按钮）");
+            UiBlocker.Block();
+            ModLog.Debug("UI", "设置面板已打开（快捷键 / 主菜单按钮）");
         }
 
         internal void OpenIfClosed()
         {
-            if (!Open) ModLog.Debug("[UI] 设置面板打开（暂停菜单浮层按钮）");
+            if (Open) return;
             Open = true;
+            UiBlocker.Block();
+            ModLog.Debug("UI", "设置面板已打开（暂停菜单按钮）");
         }
 
         internal void Close()
         {
-            if (Open) ModLog.Debug("[UI] 设置面板关闭");
+            if (!Open) return;
             Open = false;
             _content.CancelKeyCapture();
             ImGuiImeRecovery.RequestClear();
+            UiBlocker.Unblock();
+            ModLog.Debug("UI", "设置面板已关闭");
         }
-
-        internal bool ExpectsTextInput => Open && _content.IsCapturingHotkey;
 
         internal void Draw()
         {
@@ -70,7 +79,6 @@ namespace CasualtiesUnknown.Hotbar
             }
         }
 
-        /// <summary>按屏幕尺寸算缩放比，使窗口不超出屏幕；屏幕足够大时不放大（上限 1）。</summary>
         private static float ComputeScale()
         {
             float fit = Mathf.Min(Screen.width / Width, Screen.height / Height) * 0.92f;

@@ -5,10 +5,7 @@ using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>
-    /// 快捷栏设置的可复用 GUILayout 内容，供独立窗口与 SaveManager 合并分页共用。
-    /// 只画控件不画窗口框；样式继承宿主当前 GUISkin。
-    /// </summary>
+    /// <summary>可复用的快捷栏设置与关于页 IMGUI 内容，供独立窗口与 SaveManager 侧栏共用。</summary>
     internal sealed class HotbarSettingsContent
     {
         private const float LabelW = 220f;
@@ -21,8 +18,13 @@ namespace CasualtiesUnknown.Hotbar
             KeyCode.LeftAlt, KeyCode.RightAlt,
         };
 
+        private static HotbarSettingsContent _activeCapturingOwner;
+        private static int _lastCapturingFrame = -10;
+
         private readonly HotbarConfig _cfg;
         private ConfigEntry<KeyboardShortcut> _capturing;
+        private int _lastDrawnFrame = -10;
+        private int _layoutSlotCount = 1;
         private int _tab;
         private Vector2 _scroll;
 
@@ -31,12 +33,37 @@ namespace CasualtiesUnknown.Hotbar
             _cfg = cfg;
         }
 
-        internal void CancelKeyCapture() => _capturing = null;
+        // 用 2 帧活跃窗口兜底宿主 SaveManager 关闭面板时无取消通知的场景，防止捕获态永久锁死输入
+        internal static bool AnyCapturing =>
+            _activeCapturingOwner != null
+            && _activeCapturingOwner._capturing != null
+            && Time.frameCount - _lastCapturingFrame <= 2;
+
+        internal void CancelKeyCapture()
+        {
+            _capturing = null;
+            if (ReferenceEquals(_activeCapturingOwner, this))
+                _activeCapturingOwner = null;
+        }
 
         internal bool IsCapturingHotkey => _capturing != null;
 
         internal void Draw()
         {
+            int frame = Time.frameCount;
+            if (_capturing != null && frame - _lastDrawnFrame > 2)
+                CancelKeyCapture();
+            _lastDrawnFrame = frame;
+
+            if (_capturing != null)
+            {
+                _activeCapturingOwner = this;
+                _lastCapturingFrame = frame;
+            }
+
+            if (Event.current == null || Event.current.type == EventType.Layout)
+                _layoutSlotCount = Mathf.Clamp(_cfg.SlotCount.Value, 1, HotbarConfig.MaxSlots);
+
             BlackWhiteSkin.EnsureStyles();
             DrawTabBar();
             GUILayout.Space(8f);
@@ -63,6 +90,7 @@ namespace CasualtiesUnknown.Hotbar
             var style = _tab == idx ? BlackWhiteSkin.TabActiveStyle : BlackWhiteSkin.TabStyle;
             if (GUILayout.Button(label, style, GUILayout.MinWidth(180f), GUILayout.MinHeight(48f)))
             {
+                CancelKeyCapture();
                 _tab = idx;
             }
         }
@@ -70,47 +98,28 @@ namespace CasualtiesUnknown.Hotbar
         private void DrawAbout()
         {
             GUILayout.Space(12f);
-            GUILayout.Label(HotbarI18n.T("about.title"), CenterTitleStyle, GUILayout.ExpandWidth(true));
+            GUILayout.Label(HotbarI18n.T("about.title"), BlackWhiteSkin.CenterTitleStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(6f);
-            GUILayout.Label(HotbarI18n.T("about.desc"), CenterLabelStyle, GUILayout.ExpandWidth(true));
-            GUILayout.Label(HotbarI18n.F("about.version", Plugin.PluginVersion), CenterLabelStyle, GUILayout.ExpandWidth(true));
+            GUILayout.Label(HotbarI18n.T("about.desc"), BlackWhiteSkin.CenterLabelStyle, GUILayout.ExpandWidth(true));
+            GUILayout.Label(HotbarI18n.F("about.version", ModLog.FormatDisplayVersion(Plugin.PluginVersion)),
+                BlackWhiteSkin.CenterLabelStyle, GUILayout.ExpandWidth(true));
 
             GUILayout.Space(16f);
-            GUILayout.Label(HotbarI18n.T("about.sec_links"), CenterTitleStyle, GUILayout.ExpandWidth(true));
+            GUILayout.Label(HotbarI18n.T("about.sec_links"), BlackWhiteSkin.CenterTitleStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(6f);
             DrawLinkButton(HotbarI18n.T("about.link_repo"), "https://github.com/HuanXinWork/Cu-Hotbar");
             DrawLinkButton(HotbarI18n.T("about.link_release"), "https://github.com/HuanXinWork/Cu-Hotbar/releases/latest");
 
             GUILayout.Space(16f);
-            GUILayout.Label(HotbarI18n.T("about.sec_credits"), CenterTitleStyle, GUILayout.ExpandWidth(true));
+            GUILayout.Label(HotbarI18n.T("about.sec_credits"), BlackWhiteSkin.CenterTitleStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(6f);
             DrawNameButton("huanxin886", "https://github.com/huanxin886");
 
             GUILayout.Space(16f);
-            GUILayout.Label(HotbarI18n.T("about.sec_deps"), CenterTitleStyle, GUILayout.ExpandWidth(true));
+            GUILayout.Label(HotbarI18n.T("about.sec_deps"), BlackWhiteSkin.CenterTitleStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(6f);
             DrawLinkButton("BepInEx", "https://github.com/BepInEx/BepInEx");
             DrawLinkButton("CuSaveManager", "https://github.com/HuanXinWork/Cu-SaveManager");
-        }
-
-        private static GUIStyle _centerTitle;
-        private static GUIStyle CenterTitleStyle
-        {
-            get
-            {
-                if (_centerTitle == null) _centerTitle = new GUIStyle(BlackWhiteSkin.HeaderStyle) { alignment = TextAnchor.MiddleCenter };
-                return _centerTitle;
-            }
-        }
-
-        private static GUIStyle _centerLabel;
-        private static GUIStyle CenterLabelStyle
-        {
-            get
-            {
-                if (_centerLabel == null) _centerLabel = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, wordWrap = true };
-                return _centerLabel;
-            }
         }
 
         private static void DrawLinkButton(string label, string url)
@@ -143,15 +152,15 @@ namespace CasualtiesUnknown.Hotbar
 
         private void DrawSettings()
         {
-            GUILayout.Label(HotbarI18n.T("hint.usage"));
+            GUILayout.Label(HotbarI18n.T("hint.usage"), BlackWhiteSkin.HintLabelStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(8f);
 
             GUILayout.Label(HotbarI18n.T("sec.display"), BlackWhiteSkin.HeaderStyle);
             GUILayout.BeginVertical(BlackWhiteSkin.CardStyle);
             bool vis = DrawSwitch(HotbarI18n.T("sw.visible"), _cfg.Visible.Value);
             if (vis != _cfg.Visible.Value) _cfg.Visible.Value = vis;
-            DrawIntStepper(HotbarI18n.F("fmt.slot_count", _cfg.SlotCount.Value), _cfg.SlotCount, 1);
-            DrawIntStepper(HotbarI18n.F(_cfg.Vertical.Value ? "fmt.col_count" : "fmt.row_count", _cfg.RowCount.Value), _cfg.RowCount, 1);
+            DrawIntStepper(HotbarI18n.F("fmt.slot_count", _cfg.SlotCount.Value), _cfg.SlotCount, 1, HotbarConfig.MaxSlots);
+            DrawIntStepper(HotbarI18n.F(_cfg.Vertical.Value ? "fmt.col_count" : "fmt.row_count", _cfg.RowCount.Value), _cfg.RowCount, 1, HotbarConfig.MaxSlots);
             DrawDirectionRow();
             DrawFloatSlider(HotbarI18n.F("fmt.scale", _cfg.Scale.Value), _cfg.Scale, 0.5f, 2f);
             DrawFloatSlider(HotbarI18n.F("fmt.bg_alpha", _cfg.BackgroundAlpha.Value), _cfg.BackgroundAlpha, 0f, 1f);
@@ -160,8 +169,8 @@ namespace CasualtiesUnknown.Hotbar
             GUILayout.Space(12f);
             GUILayout.Label(HotbarI18n.T("sec.keys"), BlackWhiteSkin.HeaderStyle);
             GUILayout.BeginVertical(BlackWhiteSkin.CardStyle);
-            int count = Mathf.Max(_cfg.SlotCount.Value, 1);
-            for (int i = 0; i < count; i++)
+            // 按 Layout 阶段锁定的槽数绘制，防止同帧点击 +/- 修改 SlotCount 导致 IMGUI 控件数不匹配异常
+            for (int i = 0; i < _layoutSlotCount; i++)
             {
                 DrawHotkeyRow(HotbarI18n.F("fmt.slot_hotkey", i + 1), _cfg.SlotHotkey(i));
             }
@@ -202,17 +211,9 @@ namespace CasualtiesUnknown.Hotbar
             GUILayout.Label(HotbarI18n.T("sec.misc"), BlackWhiteSkin.HeaderStyle);
             GUILayout.BeginVertical(BlackWhiteSkin.CardStyle);
             bool log = DrawSwitch(HotbarI18n.T("sw.show_log_in_console"), _cfg.ShowLogInConsole.Value);
-            if (log != _cfg.ShowLogInConsole.Value)
-            {
-                _cfg.ShowLogInConsole.Value = log;
-                ModLog.ShowInConsole = log;
-            }
+            if (log != _cfg.ShowLogInConsole.Value) _cfg.ShowLogInConsole.Value = log;
             bool upd = DrawSwitch(HotbarI18n.T("sw.accept_update_notice"), _cfg.AcceptUpdateNotice.Value);
-            if (upd != _cfg.AcceptUpdateNotice.Value)
-            {
-                _cfg.AcceptUpdateNotice.Value = upd;
-                UpdateChecker.Enabled = upd;
-            }
+            if (upd != _cfg.AcceptUpdateNotice.Value) _cfg.AcceptUpdateNotice.Value = upd;
             DrawLanguageModeRow(HotbarI18n.T("lbl.language"), _cfg.PreferredLanguage);
             GUILayout.EndVertical();
         }
@@ -266,13 +267,20 @@ namespace CasualtiesUnknown.Hotbar
                 : (entry.Value.MainKey == KeyCode.None ? HotbarI18n.T("btn.unbound") : entry.Value.ToString());
             if (GUILayout.Button(shown, GUILayout.MinWidth(200f), GUILayout.MinHeight(RowH)))
             {
-                _capturing = capturing ? null : entry;
+                if (capturing) CancelKeyCapture();
+                else
+                {
+                    _capturing = entry;
+                    _activeCapturingOwner = this;
+                    _lastCapturingFrame = Time.frameCount;
+                }
             }
             GUILayout.Space(8f);
             if (GUILayout.Button(HotbarI18n.T("btn.clear"), GUILayout.MinWidth(100f), GUILayout.MinHeight(RowH)))
             {
                 entry.Value = new KeyboardShortcut(KeyCode.None);
-                if (capturing) _capturing = null;
+                ModLog.Debug("Config", $"已清除热键绑定：{entry.Definition.Key}");
+                if (capturing) CancelKeyCapture();
             }
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
@@ -287,17 +295,25 @@ namespace CasualtiesUnknown.Hotbar
             KeyCode main = KeyCode.None;
             if (e.type == EventType.KeyDown && e.keyCode != KeyCode.None && !IsModifier(e.keyCode))
             {
-                if (e.keyCode == KeyCode.Escape) { _capturing = null; e.Use(); return; }
+                if (e.keyCode == KeyCode.Escape)
+                {
+                    CancelKeyCapture();
+                    e.Use();
+                    return;
+                }
                 main = e.keyCode;
             }
-            else if (e.type == EventType.MouseDown)
+            else if (e.type == EventType.MouseDown && e.mousePosition.y >= 0f)
             {
                 main = KeyCode.Mouse0 + e.button;
             }
             if (main == KeyCode.None) return;
 
-            _capturing.Value = new KeyboardShortcut(main, CollectModifiers());
-            _capturing = null;
+            var target = _capturing;
+            var shortcut = new KeyboardShortcut(main, CollectModifiers());
+            CancelKeyCapture();
+            target.Value = shortcut;
+            ModLog.Debug("Config", $"已更新热键绑定：{target.Definition.Key} = {shortcut}");
             e.Use();
         }
 
@@ -346,7 +362,7 @@ namespace CasualtiesUnknown.Hotbar
 
         private static void DrawLanguageModeRow(string label, ConfigEntry<string> entry)
         {
-            string mode = NormalizeLanguageMode(entry.Value);
+            string mode = HotbarI18n.NormalizeLanguageMode(entry.Value);
             GUILayout.BeginHorizontal();
             GUILayout.Label(label, BlackWhiteSkin.RowLabelStyle,
                 GUILayout.MinWidth(LabelW), GUILayout.ExpandWidth(false), GUILayout.MinHeight(RowH));
@@ -375,26 +391,19 @@ namespace CasualtiesUnknown.Hotbar
             GUILayout.EndHorizontal();
         }
 
-        private static string NormalizeLanguageMode(string mode)
-        {
-            if (string.IsNullOrWhiteSpace(mode)) return "auto";
-            mode = mode.Trim().ToLowerInvariant();
-            return mode == "zh" || mode == "en" ? mode : "auto";
-        }
-
-        private static void DrawIntStepper(string label, ConfigEntry<int> entry, int min)
+        private static void DrawIntStepper(string label, ConfigEntry<int> entry, int min, int max)
         {
             GUILayout.BeginHorizontal();
             GUILayout.Label(label, BlackWhiteSkin.RowLabelStyle, GUILayout.MinWidth(LabelW), GUILayout.ExpandWidth(false), GUILayout.MinHeight(RowH));
             GUILayout.Space(20f);
             if (GUILayout.Button("-", GUILayout.MinWidth(60f), GUILayout.MinHeight(RowH)))
             {
-                if (entry.Value > min) entry.Value = entry.Value - 1;
+                if (entry.Value > min) entry.Value -= 1;
             }
             GUILayout.Space(8f);
             if (GUILayout.Button("+", GUILayout.MinWidth(60f), GUILayout.MinHeight(RowH)))
             {
-                entry.Value = entry.Value + 1;
+                if (entry.Value < max) entry.Value += 1;
             }
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();

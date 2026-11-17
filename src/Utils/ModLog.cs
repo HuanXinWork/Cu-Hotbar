@@ -1,85 +1,168 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
+using System.Text;
 using BepInEx.Logging;
+using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>
-    /// 全模组统一日志出口。写入 BepInEx 日志；ShowInConsole 开启时同步打印到游戏内控制台。
-    /// </summary>
+    /// <summary>分级日志系统：Release 仅输出精简运行与告警日志，Debug 启用全链路追踪与独立诊断日志文件。</summary>
     internal static class ModLog
     {
         private const string Prefix = "[Hotbar] ";
 
+#if DEBUG
+        internal const string BuildFlavor = "Debug";
+#else
+        internal const string BuildFlavor = "Release";
+#endif
+
         private static ManualLogSource _sink;
         private static MethodInfo _consoleLog;
         private static bool _consoleResolved;
+
 #if DEBUG
+        private static readonly object _fileLock = new object();
         private static readonly Dictionary<string, ThrottleState> _throttle
-            = new Dictionary<string, ThrottleState>();
+            = new Dictionary<string, ThrottleState>(StringComparer.Ordinal);
+        private static StreamWriter _debugWriter;
+        private static string _debugFilePath;
 #endif
 
         internal static bool ShowInConsole { get; set; }
 
-        internal static void Init(ManualLogSource sink) => _sink = sink;
-
-        internal static void Info(string message)
-        {
-            _sink?.LogInfo(message);
-            WriteToConsole(message, null);
-        }
-
-        internal static void Warning(string message)
-        {
-            _sink?.LogWarning(message);
-            WriteToConsole(message, "yellow");
-        }
-
-        internal static void Error(string message)
-        {
-            _sink?.LogError(message);
-            WriteToConsole(message, "red");
-        }
-
-        /// <summary>Debug 构建专用诊断日志。Release 构建中带此特性的方法调用会被编译器整体移除，含实参求值。</summary>
-        /// <remarks>
-        /// 用 LogInfo 而非 LogDebug：BepInEx 5 的 LogLevels 默认不含 Debug（游戏侧配置为 Fatal, Error, Warning, Message, Info），
-        /// LogDebug 不会写进 LogOutput.log，而诊断必须能事后翻查。
-        /// 方法体整体包在 #if DEBUG 内：[Conditional] 只删调用点，方法体仍会编译进 Release 并残留 "[DBG] " 常量。
-        /// </remarks>
-        [Conditional("DEBUG")]
-        internal static void Debug(string message)
+        internal static string FormatDisplayVersion(string version)
         {
 #if DEBUG
-            _sink?.LogInfo(Prefix + "[DBG] " + message);
+            return version + " (Debug)";
+#else
+            return version;
 #endif
         }
 
-        /// <summary>Debug 构建专用的节流日志：同一分类每秒最多一条，并把该秒内被合并的次数附在末尾。</summary>
+        internal static void Init(ManualLogSource sink, string dataRoot)
+        {
+            _sink = sink;
+#if DEBUG
+            InitDebugFile(dataRoot);
+#endif
+        }
+
+        internal static void Shutdown()
+        {
+#if DEBUG
+            lock (_fileLock)
+            {
+                if (_debugWriter != null)
+                {
+                    try
+                    {
+                        _debugWriter.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}][END] Shutdown");
+                        _debugWriter.Flush();
+                        _debugWriter.Dispose();
+                    }
+                    catch { }
+                    _debugWriter = null;
+                }
+            }
+#endif
+        }
+
+        internal static void Info(string message) => Info(null, message);
+
+        internal static void Info(string scope, string message)
+        {
+            string formatted = FormatScoped(scope, message);
+            _sink?.LogInfo(formatted);
+            WriteToConsole(formatted, null);
+#if DEBUG
+            WriteDebugFile("INF", scope, message);
+#endif
+        }
+
+        internal static void Warning(string message) => Warning(null, message);
+
+        internal static void Warning(string scope, string message)
+        {
+            string formatted = FormatScoped(scope, message);
+            _sink?.LogWarning(formatted);
+            WriteToConsole(formatted, "yellow");
+#if DEBUG
+            WriteDebugFile("WRN", scope, message);
+#endif
+        }
+
+        internal static void Error(string message) => Error(null, message);
+
+        internal static void Error(string scope, string message)
+        {
+            string formatted = FormatScoped(scope, message);
+            _sink?.LogError(formatted);
+            WriteToConsole(formatted, "red");
+#if DEBUG
+            WriteDebugFile("ERR", scope, message);
+#endif
+        }
+
+        /// <summary>Debug 专用状态日志；Release 编译期连同实参求值一并剥离。</summary>
         [Conditional("DEBUG")]
-        internal static void DebugThrottled(string category, string message)
+        internal static void Debug(string scope, string message)
+        {
+#if DEBUG
+            string formatted = $"[DBG][{scope}] {message}";
+            // BepInEx 默认屏蔽 LogDebug 级别，走 LogInfo 确保写入 LogOutput.log
+            _sink?.LogInfo(Prefix + formatted);
+            WriteToConsole(formatted, "#9E9E9E");
+            WriteDebugFile("DBG", scope, message);
+#endif
+        }
+
+        /// <summary>Debug 专用多步流程追踪日志。</summary>
+        [Conditional("DEBUG")]
+        internal static void Flow(string scope, string step, string message)
+        {
+#if DEBUG
+            Debug(scope, $"{step} · {message}");
+#endif
+        }
+
+        /// <summary>Debug 专用按分类限频（1 次/秒）日志，附带上一秒合并计数。</summary>
+        [Conditional("DEBUG")]
+        internal static void DebugThrottled(string category, string scope, string message)
         {
 #if DEBUG
             long second = DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond;
-            if (!_throttle.TryGetValue(category, out var state))
+            string suffix;
+            lock (_fileLock)
             {
-                state = new ThrottleState { Second = second };
-                _throttle[category] = state;
+                if (!_throttle.TryGetValue(category, out var state))
+                {
+                    state = new ThrottleState { Second = second };
+                    _throttle[category] = state;
+                    suffix = "";
+                }
+                else if (state.Second == second)
+                {
+                    state.Merged++;
+                    return;
+                }
+                else
+                {
+                    suffix = state.Merged > 0 ? $"（上一秒合并 {state.Merged} 次）" : "";
+                    state.Second = second;
+                    state.Merged = 0;
+                }
             }
-            else if (state.Second == second)
-            {
-                state.Merged++;
-                return;
-            }
-
-            // 本秒首条立刻落盘（不能丢），上一秒被合并的次数挂在它后面。
-            string suffix = state.Merged > 0 ? $"（本秒内共 {state.Merged + 1} 次）" : "";
-            state.Second = second;
-            state.Merged = 0;
-            Debug(message + suffix);
+            Debug(scope, message + suffix);
 #endif
+        }
+
+        private static string FormatScoped(string scope, string message)
+        {
+            return string.IsNullOrEmpty(scope) ? message : $"[{scope}] {message}";
         }
 
 #if DEBUG
@@ -87,6 +170,49 @@ namespace CasualtiesUnknown.Hotbar
         {
             internal long Second;
             internal int Merged;
+        }
+
+        private static void InitDebugFile(string dataRoot)
+        {
+            if (string.IsNullOrEmpty(dataRoot)) return;
+            lock (_fileLock)
+            {
+                if (_debugWriter != null) return;
+                try
+                {
+                    Directory.CreateDirectory(dataRoot);
+                    _debugFilePath = Path.Combine(dataRoot, "CuHotbar.debug.log");
+                    string prevPath = Path.Combine(dataRoot, "CuHotbar.debug.prev.log");
+                    if (File.Exists(_debugFilePath))
+                    {
+                        if (File.Exists(prevPath)) File.Delete(prevPath);
+                        File.Move(_debugFilePath, prevPath);
+                    }
+                    var stream = new FileStream(_debugFilePath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                    _debugWriter = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
+                    _debugWriter.WriteLine($"=== {Plugin.PluginName} v{Plugin.PluginVersion} ({BuildFlavor}) · {DateTime.Now:yyyy-MM-dd HH:mm:ss} · Unity {Application.unityVersion} ===");
+                }
+                catch (Exception ex)
+                {
+                    _sink?.LogWarning($"{Prefix}创建独立诊断日志失败：{ex.Message}");
+                }
+            }
+        }
+
+        private static void WriteDebugFile(string level, string scope, string message)
+        {
+            if (_debugWriter == null) return;
+            int frame = 0;
+            try { frame = Time.frameCount; } catch { }
+            string tag = string.IsNullOrEmpty(scope) ? "" : $"[{scope}]";
+            lock (_fileLock)
+            {
+                try
+                {
+                    _debugWriter?.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}][F{frame:D5}][{level}]{tag} {message}");
+                }
+                catch { }
+            }
         }
 #endif
 
@@ -96,8 +222,7 @@ namespace CasualtiesUnknown.Hotbar
             try
             {
                 var instance = ConsoleScript.instance;
-                if (instance == null) return;
-                if (!ResolveConsoleLog()) return;
+                if (instance == null || !ResolveConsoleLog()) return;
                 string text = string.IsNullOrEmpty(color) ? Prefix + message : $"<color={color}>{Prefix}{message}</color>";
                 _consoleLog.Invoke(instance, new object[] { text });
             }
