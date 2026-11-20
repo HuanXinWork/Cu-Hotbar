@@ -259,6 +259,39 @@ namespace CasualtiesUnknown.Hotbar
             }
         }
 
+        /// <summary>该槽物品仍由本模组留在主手时再次按键收起归还原位；返回是否真正执行了收起。</summary>
+        internal bool TryPutAway(int index)
+        {
+            if (index < 0 || index >= _slotCount || _activeIndex != index) return false;
+            var body = CurrentBody();
+            if (body == null)
+            {
+                ClearActive();
+                return false;
+            }
+            SyncTrackedBody(body);
+            if (_activeIndex != index) return false;
+
+            // 主手换成了同种另一把或已被原版挪用时不接管，交由 Activate 重新解析，避免收起错物品
+            if (_activeItem == null || body.GetItem(body.handSlot) != _activeItem)
+            {
+                ClearActive();
+                return false;
+            }
+
+            bool inGesture = MultiplayerCompat.BeginMoveGesture();
+            try
+            {
+                RestorePrevious(body);
+            }
+            finally
+            {
+                if (inGesture) MultiplayerCompat.EndMoveGesture(null);
+                InvalidateSnapshot();
+            }
+            return true;
+        }
+
         /// <summary>激活物品离身时按 AutoRefill 自动补同种，仍在身上但离手则解除跟踪。</summary>
         internal void RefillActiveIfNeeded()
         {

@@ -19,7 +19,7 @@ namespace CasualtiesUnknown.Hotbar
     {
         internal const string PluginGuid = "com.casualtiesUnknown.hotbar";
         internal const string PluginName = "CuHotbar";
-        internal const string PluginVersion = "1.1.0";
+        internal const string PluginVersion = "1.1.1";
 
         private const string SaveManagerGuid = "com.casualtiesUnknown.saveManager";
         private const string TogetherGuid = "CasualtiesMP";
@@ -183,7 +183,8 @@ namespace CasualtiesUnknown.Hotbar
                 + $"Vertical={cfg.Vertical.Value} Visible={cfg.Visible.Value} Scale={cfg.Scale.Value:0.00} "
                 + $"BackgroundAlpha={cfg.BackgroundAlpha.Value:0.00} EnableScroll={cfg.EnableScroll.Value} "
                 + $"AutoRefill={cfg.AutoRefill.Value} WarnOnDrop={cfg.WarnOnDrop.Value} "
-                + $"SafeQuickUse={cfg.SafeQuickUse.Value} AutoReload={cfg.AutoReload.Value}");
+                + $"SafeQuickUse={cfg.SafeQuickUse.Value} AutoReload={cfg.AutoReload.Value} "
+                + $"SameKeyPutAway={cfg.SameKeyPutAway.Value}");
             ModLog.Debug("Config", $"[Position] AnchorX={cfg.AnchorX.Value:0.00} AnchorY={cfg.AnchorY.Value:0.00} "
                 + $"OffsetX={cfg.OffsetX.Value:0.0} OffsetY={cfg.OffsetY.Value:0.0}");
             ModLog.Debug("Config", $"[Hotkeys] UseItemHotkey={DescribeShortcut(cfg.UseItemHotkey.Value)} "

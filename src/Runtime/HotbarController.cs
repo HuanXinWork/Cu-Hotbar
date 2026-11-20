@@ -122,6 +122,13 @@ namespace CasualtiesUnknown.Hotbar
             {
                 if (!HotbarConfig.TriggeredThisFrame(_cfg.SlotHotkey(i))) continue;
 
+                // 同键收起优先于指向绑定：收起是战斗中高频操作，不能因光标恰好停在物品上退化成改绑
+                if (_cfg.SameKeyPutAway.Value && _model.TryPutAway(i))
+                {
+                    LogSlotOp("同键收起", i, _model.GetItem(i), "槽位热键");
+                    return;
+                }
+
                 var hover = HoverItemLocator.ItemUnderMouse();
                 if (hover != null)
                 {

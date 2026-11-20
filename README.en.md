@@ -1,4 +1,4 @@
-# CuHotbar V1.1.0 for Casualties: Unknown
+# CuHotbar V1.1.1 for Casualties: Unknown
 
 > A Minecraft-style hotbar mod for Casualties: Unknown
 > Compatible with: CuSaveManager (settings merge into its panel when present; its absence does not break features)
@@ -7,7 +7,7 @@
 
 ## Overview
 
-This mod adds a customizable hotbar in-game: drag items from the vanilla inventory onto slots to bind them, or point at an item and press a slot's key to bind it without dragging, and right-click a slot to unbind it; switch an item to your main hand with each slot's own key or the scroll wheel, and use the held item with a configurable key (Shift+Right-click by default). The slot count is unlimited and supports horizontal (defaults to the bottom) or vertical (defaults to the right) layout across multiple rows/columns; every slot's switch key is individually bindable (combos supported), and each slot shows its bound key at the top-left. Position, scale, and opacity are all adjustable. Bindings are cached per character and persist across sessions. When CuSaveManager is present, settings are merged into one of its panel tabs; otherwise the mod injects its own button and panel.
+This mod adds a customizable hotbar in-game: drag items from the vanilla inventory onto slots to bind them, or point at an item and press a slot's key to bind it without dragging, and right-click a slot to unbind it; switch an item to your main hand with each slot's own key or the scroll wheel (pressing the same key again puts it away), and use the held item with a configurable key (Shift+Right-click by default). The slot count is unlimited and supports horizontal (defaults to the bottom) or vertical (defaults to the right) layout across multiple rows/columns; every slot's switch key is individually bindable (combos supported), and each slot shows its bound key at the top-left. Position, scale, and opacity are all adjustable. Bindings are cached per character and persist across sessions. When CuSaveManager is present, settings are merged into one of its panel tabs; otherwise the mod injects its own button and panel.
 
 ## Changelog
 
@@ -21,6 +21,7 @@ Full release history lives in [changes.en.md](changes.en.md) (中文：[changes.
 - **Per-slot keys**: every slot's switch key is individually bindable and supports combos (e.g. Ctrl+1); the first 9 slots default to Keypad 1-9, extra slots are unbound by default and can be set manually.
 - **Key badge**: each slot shows its actual bound key at the top-left, updated instantly when rebound; blank when unbound.
 - **Quick switch**: each slot's bound key or the scroll wheel switches the active slot and moves its item to the main hand; the selected slot has a bold white border.
+- **Same-key put away**: optional toggle, on by default. Pressing the active slot's key again puts the held item away using the same "original spot → empty body slot → dropped" order, so you no longer need to keep a spare empty slot just for holstering; turning it off restores the previous behavior (extra presses do nothing).
 - **Custom use key**: use the held item with a configurable key, combos supported, defaulting to Shift+Right-click (rebind or clear it to disable in settings).
 - **Safe quick use**: optional toggle. When on, pressing a slot key or scrolling to an edible / drinkable item (food / drink / oral medicine) selects it without switching to the main hand, leaving your held item untouched; press the use key to eat / drink it directly. Detected by the item's actual behavior, so tools / explosives / magazines won't be triggered.
 - **Auto reload**: on by default. When the firearm in your main hand is short of ammo (no magazine / direct-feed magazine not full / racked but chamber empty), the mod scans your inventory for matching `ammoType` and loads one round / magazine; full magazines are preferred. No keypress and no hand swap.
@@ -48,6 +49,7 @@ After launch, a "CuHotbar" button is injected on the main menu; in-game, opening
 | Bind item to slot | Drag an item onto a slot, or point at an item and press its slot key |
 | Unbind slot | Right-click the slot, or click "Clear all slots" under Settings → Switch keys |
 | Switch and hold | Each slot's bound key (first 9 default to Keypad 1-9) / scroll wheel |
+| Put the held item away | Press that item's slot key again (can be disabled in settings), or press any empty slot's key |
 | Use held item | Shift+Right-click (rebindable) |
 | Take out of slot | Drag out of the slot (using on a limb, returning to backpack, etc. follow vanilla logic) |
 
@@ -57,7 +59,7 @@ After launch, a "CuHotbar" button is injected on the main menu; in-game, opening
 |---------|---------|
 | Display | Visibility toggle, slot count, rows/columns, layout direction (horizontal / vertical), UI scale, background alpha |
 | Switch keys | Per-slot switch key, use-held-item key, clear all slots |
-| Behavior & Assist | Scroll switch, auto-refill, drop warning, safe quick use, auto reload |
+| Behavior & Assist | Scroll switch, same-key put away, auto-refill, drop warning, safe quick use, auto reload |
 | Position | Screen anchor X/Y, pixel offset X/Y, reset position |
 | Hotkeys | Toggle settings panel |
 | Misc | Show mod logs in game console, accept update notifications, UI language (follow game / Chinese / English) |

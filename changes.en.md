@@ -2,6 +2,12 @@
 
 > 中文更新日志：见 [changes.md](changes.md)
 
+## v1.1.1
+
+### Added
+
+- **Same-key put away**: new optional toggle "Same key puts the item away" (on by default). Pressing a slot's key again while its item is in your main hand puts it away in the "original spot → empty body slot → dropped" order, so you no longer need to keep a spare empty slot for holstering; turning it off restores the old behavior (extra presses do nothing). Put-away takes priority over bind-by-pointing, so rebind by pressing once more after the item is away.
+
 ## v1.1.0
 
 ### Added

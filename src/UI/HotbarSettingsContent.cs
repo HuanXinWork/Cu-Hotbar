@@ -236,6 +236,8 @@ namespace CasualtiesUnknown.Hotbar
             GUILayout.BeginVertical(BlackWhiteSkin.CardStyle);
             DrawSwitch(HotbarI18n.T("sw.enable_scroll"), _cfg.EnableScroll);
             GUILayout.Space(RowGap);
+            DrawSwitch(HotbarI18n.T("sw.same_key_put_away"), _cfg.SameKeyPutAway);
+            GUILayout.Space(RowGap);
             DrawSwitch(HotbarI18n.T("sw.auto_refill"), _cfg.AutoRefill);
             GUILayout.Space(RowGap);
             DrawSwitch(HotbarI18n.T("sw.warn_on_drop"), _cfg.WarnOnDrop);
