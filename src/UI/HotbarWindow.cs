@@ -6,20 +6,22 @@ namespace CasualtiesUnknown.Hotbar
     internal sealed class HotbarWindow
     {
         private const int WindowId = 0x48425730;
-        private const float Width = 900f;
-        private const float Height = 700f;
+        private const float Width = 980f;
+        private const float Height = 740f;
         private const float TitleBarHeight = 64f;
-        private const float CloseBtnSize = 52f;
+        private const float CloseBtnSize = 48f;
 
         private readonly HotbarSettingsContent _content;
         private Rect _rect = new Rect(160f, 110f, Width, Height);
         private float _drawScale = 1f;
+        private bool _posInitialized;
 
         internal bool Open { get; private set; }
 
         internal HotbarWindow(HotbarConfig cfg)
         {
-            _content = new HotbarSettingsContent(cfg);
+            // 独立窗口已由外层 Draw() 统一管理 BlackWhiteSkin.Push/Pop，避免嵌套覆盖 _previousSkin
+            _content = new HotbarSettingsContent(cfg, manageSkin: false);
         }
 
         internal bool IsCapturingHotkey => Open && _content.IsCapturingHotkey;
@@ -62,6 +64,13 @@ namespace CasualtiesUnknown.Hotbar
             _rect.height = Height;
             float maxX = Mathf.Max(0f, Screen.width / _drawScale - Width);
             float maxY = Mathf.Max(0f, Screen.height / _drawScale - Height);
+            if (!_posInitialized && Screen.width > 0 && Screen.height > 0)
+            {
+                // 首次展开按当前逻辑屏幕尺寸居中，后续保留用户拖拽后的窗口位置
+                _rect.x = (Screen.width / _drawScale - Width) * 0.5f;
+                _rect.y = (Screen.height / _drawScale - Height) * 0.5f;
+                _posInitialized = true;
+            }
             _rect.x = Mathf.Clamp(_rect.x, 0f, maxX);
             _rect.y = Mathf.Clamp(_rect.y, 0f, maxY);
 
@@ -87,20 +96,23 @@ namespace CasualtiesUnknown.Hotbar
 
         private void DrawContent(int id)
         {
-            BlackWhiteSkin.DrawBorder(new Rect(0f, 0f, Width, Height), 6f);
+            BlackWhiteSkin.DrawBorder(new Rect(0f, 0f, Width, Height), 4f);
 
-            GUI.Label(new Rect(28f, 14f, Width - CloseBtnSize - 56f, 40f),
+            GUI.Label(new Rect(28f, 12f, Width - CloseBtnSize - 56f, 40f),
                 HotbarI18n.T("app.name"), BlackWhiteSkin.HeaderStyle);
 
             var closeRect = new Rect(Width - CloseBtnSize - 12f, 8f, CloseBtnSize, CloseBtnSize);
-            if (GUI.Button(closeRect, GUIContent.none)) Close();
-            BlackWhiteSkin.DrawBorder(closeRect, 4f);
-            BlackWhiteSkin.DrawCloseX(new Rect(closeRect.x + 13f, closeRect.y + 13f,
-                closeRect.width - 26f, closeRect.height - 26f), 6f);
+            if (GUI.Button(closeRect, GUIContent.none, BlackWhiteSkin.IconBtnStyle))
+            {
+                Close();
+                GUIUtility.ExitGUI();
+            }
+            BlackWhiteSkin.DrawCloseX(new Rect(closeRect.x + 14f, closeRect.y + 14f,
+                closeRect.width - 28f, closeRect.height - 28f), 4f);
 
-            BlackWhiteSkin.DrawHLine(new Rect(0f, TitleBarHeight, Width, 4f));
+            BlackWhiteSkin.DrawHLine(new Rect(0f, TitleBarHeight, Width, 2f));
 
-            var bodyRect = new Rect(24f, TitleBarHeight + 16f, Width - 48f, Height - TitleBarHeight - 40f);
+            var bodyRect = new Rect(24f, TitleBarHeight + 12f, Width - 48f, Height - TitleBarHeight - 28f);
             GUILayout.BeginArea(bodyRect);
             _content.Draw();
             GUILayout.EndArea();

@@ -2,25 +2,30 @@ name: Build CuHotbar
 
 on:
   push:
-    branches: ["**"]
-    paths:
-      - "**.cs"
-      - "**.csproj"
-      - "references/**"
-      - ".github/workflows/build.yml"
+    branches: ['main']
+    tags: ['v*', 'V*']
   pull_request:
-    branches: ["**"]
+    branches: ['main']
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 15
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -28,22 +33,35 @@ jobs:
         shell: pwsh
         run: dotnet build CuHotbar.csproj -c Release --nologo --no-incremental
 
-      - name: Build Debug
+      - name: Stage Release artifact
         shell: pwsh
-        run: dotnet build CuHotbar.csproj -c Debug --nologo --no-incremental
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'stage-release/CuHotbar' | Out-Null
+          Copy-Item -LiteralPath 'bin/Release/CuHotbar.dll' -Destination 'stage-release/CuHotbar.dll'
+          Copy-Item -LiteralPath 'bin/Release/CuHotbar.dll' -Destination 'stage-release/CuHotbar/CuHotbar.dll'
+          foreach ($file in @('README.md', 'README.en.md', 'changes.md', 'changes.en.md')) {
+            if (Test-Path -LiteralPath $file) {
+              Copy-Item -LiteralPath $file -Destination "stage-release/CuHotbar/$file"
+            }
+          }
 
       - name: Upload CuHotbar (Release)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CuHotbar
-          path: |
-            bin/Release/CuHotbar.dll
-            bin/Release/CuHotbar.pdb
+          path: stage-release/**
           if-no-files-found: error
           retention-days: 30
 
+      - name: Build Debug
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        shell: pwsh
+        run: dotnet build CuHotbar.csproj -c Debug --nologo --no-incremental
+
       - name: Upload CuHotbar (Debug)
-        uses: actions/upload-artifact@v4
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v7
         with:
           name: CuHotbar-Debug
           path: |
@@ -51,3 +69,39 @@ jobs:
             bin/Debug/CuHotbar.pdb
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Release artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: CuHotbar
+          path: release-assets
+
+      - name: Package release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-bundles
+          cp "release-assets/CuHotbar.dll" "release-bundles/CuHotbar.dll"
+          (
+            cd release-assets
+            zip -r "../release-bundles/CuHotbar-${GITHUB_REF_NAME}.zip" "CuHotbar"
+          )
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-bundles/CuHotbar.dll
+            release-bundles/CuHotbar-*.zip
+          generate_release_notes: true
+          overwrite_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

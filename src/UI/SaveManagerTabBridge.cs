@@ -28,7 +28,7 @@ namespace CasualtiesUnknown.Hotbar
                 var content = new HotbarSettingsContent(cfg);
                 Action draw = content.Draw;
                 Func<string> title = () => HotbarI18n.T("tab.title");
-                Func<string> status = () => "由 CuHotbar 提供";
+                Func<string> status = () => HotbarI18n.T("tab.provided_by");
 
                 var fn3 = AccessTools.Method(type, "Register", new[] { typeof(Func<string>), typeof(Action), typeof(Func<string>) });
                 if (fn3 != null)

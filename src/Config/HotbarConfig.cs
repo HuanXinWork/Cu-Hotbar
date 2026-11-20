@@ -84,11 +84,42 @@ namespace CasualtiesUnknown.Hotbar
                 "界面语言：auto=跟随游戏；zh=强制中文；en=强制英文。");
         }
 
+        // 仅校验三组标准修饰键并放行 WASD/Space 等常规键，规避 BepInEx KeyboardShortcut.IsDown 全键盘排斥导致移动中热键失灵
         internal static bool TriggeredThisFrame(ConfigEntry<KeyboardShortcut> entry)
         {
+            if (entry == null) return false;
             var sc = entry.Value;
-            return sc.MainKey != KeyCode.None && sc.IsDown();
+            if (sc.MainKey == KeyCode.None || !Input.GetKeyDown(sc.MainKey)) return false;
+
+            bool allowShift = IsShiftKey(sc.MainKey);
+            bool allowCtrl = IsCtrlKey(sc.MainKey);
+            bool allowAlt = IsAltKey(sc.MainKey);
+
+            foreach (var mod in sc.Modifiers)
+            {
+                if (mod == KeyCode.None) continue;
+                if (mod != sc.MainKey && !Input.GetKey(mod)) return false;
+                if (IsShiftKey(mod)) allowShift = true;
+                else if (IsCtrlKey(mod)) allowCtrl = true;
+                else if (IsAltKey(mod)) allowAlt = true;
+            }
+
+            if (!allowShift && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))) return false;
+            if (!allowCtrl && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))) return false;
+            if (!allowAlt && (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))) return false;
+            return true;
         }
+
+        internal static bool IsAnyModifierHeld()
+        {
+            return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+                || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)
+                || Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
+        }
+
+        private static bool IsShiftKey(KeyCode key) => key == KeyCode.LeftShift || key == KeyCode.RightShift;
+        private static bool IsCtrlKey(KeyCode key) => key == KeyCode.LeftControl || key == KeyCode.RightControl;
+        private static bool IsAltKey(KeyCode key) => key == KeyCode.LeftAlt || key == KeyCode.RightAlt;
 
         /// <summary>按需绑定第 index（0 基）槽热键，前 9 槽默认小键盘 1-9。</summary>
         internal ConfigEntry<KeyboardShortcut> SlotHotkey(int index)

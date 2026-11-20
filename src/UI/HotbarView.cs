@@ -1,21 +1,29 @@
+using System;
 using System.Collections.Generic;
 using BepInEx.Configuration;
 using UnityEngine;
 using UnityEngine.UI;
+using Object = UnityEngine.Object;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>管理主 Canvas 上快捷栏 UGUI 的构建、布局与状态同步。</summary>
+    /// <summary>管理主 Canvas 上快捷栏 UGUI 的构建、层级排序、布局与状态同步。</summary>
     internal sealed class HotbarView
     {
         private const float SlotSize = 64f;
         private const float SlotGap = 6f;
-        private const float SelFrameThickness = 4f;
-        private const float StatusBarHeight = 5f;
+        private const float IconMaxSize = SlotSize - 16f;
+        private const float SelFrameThickness = 3f;
+        private const float StatusBarInset = 4f;
+        private const float StatusBarHeight = 4f;
 
         private static readonly Color SlotBg = new Color(0f, 0f, 0f, 0.55f);
         private static readonly Color SlotBorder = new Color(1f, 1f, 1f, 0.35f);
+        private static readonly Color StatusTrackColor = new Color(1f, 1f, 1f, 0.14f);
         private static readonly Color SelFrameColor = Color.white;
+        private static readonly Color KeyUnselectedColor = new Color(1f, 1f, 1f, 0.75f);
+        private static readonly Color TextOutlineColor = new Color(0f, 0f, 0f, 0.88f);
+        private static readonly Vector2 TextOutlineDistance = new Vector2(1f, -1f);
 
         private static Font _builtinFont;
         private static bool _fontResolved;
@@ -24,17 +32,21 @@ namespace CasualtiesUnknown.Hotbar
 
         private readonly HotbarConfig _cfg;
         private readonly HotbarModel _model;
+        private readonly HashSet<int> _subscribedSlots = new HashSet<int>();
+        private readonly EventHandler _onSlotHotkeyChanged;
 
         private Canvas _canvas;
         private RectTransform _root;
         private readonly List<Slot> _slots = new List<Slot>();
         private int _builtCount = -1;
         private int _selected = -1;
+        private int _hotkeyDirtyVersion = 1;
 
         internal HotbarView(HotbarConfig cfg, HotbarModel model)
         {
             _cfg = cfg;
             _model = model;
+            _onSlotHotkeyChanged = (_, __) => _hotkeyDirtyVersion++;
         }
 
         internal int Selected
@@ -45,14 +57,8 @@ namespace CasualtiesUnknown.Hotbar
 
         internal void Tick()
         {
-            if (!_cfg.Visible.Value)
-            {
-                if (_root != null) _root.gameObject.SetActive(false);
-                return;
-            }
-
             var cam = PlayerCamera.main;
-            if (cam == null || cam.mainCanvas == null || cam.body == null)
+            if (!ShouldShow(cam))
             {
                 if (_root != null) _root.gameObject.SetActive(false);
                 return;
@@ -60,14 +66,32 @@ namespace CasualtiesUnknown.Hotbar
 
             if (_canvas != cam.mainCanvas || _root == null || _builtCount != _model.SlotCount)
             {
-                Rebuild(cam.mainCanvas);
+                Rebuild(cam, cam.mainCanvas);
             }
+            else
+            {
+                PlaceBeforeCanvasOverlays(cam, _canvas.transform, _root);
+            }
+
             if (_selected >= _slots.Count)
                 _selected = _slots.Count - 1;
 
-            _root.gameObject.SetActive(true);
+            if (!_root.gameObject.activeSelf)
+                _root.gameObject.SetActive(true);
             Layout();
             UpdateGraphics();
+        }
+
+        private bool ShouldShow(PlayerCamera cam)
+        {
+            if (!_cfg.Visible.Value) return false;
+            if (cam == null || cam.mainCanvas == null || cam.body == null) return false;
+            if (PauseMenuCompat.IsPauseMenuOpen()) return false;
+            if (SettingsMenu.instance != null) return false;
+            if (cam.didDeathScreen || (cam.endScreen != null && cam.endScreen.gameObject.activeInHierarchy)) return false;
+            if (WorldGeneration.world != null && (WorldGeneration.world.generatingWorld || WorldGeneration.world.cutsceneActive))
+                return false;
+            return true;
         }
 
         internal bool TryGetSlotIndexAt(Vector2 screenPos, out int index)
@@ -112,7 +136,7 @@ namespace CasualtiesUnknown.Hotbar
             }
         }
 
-        private void Rebuild(Canvas canvas)
+        private void Rebuild(PlayerCamera cam, Canvas canvas)
         {
             Dispose();
             _canvas = canvas;
@@ -123,6 +147,7 @@ namespace CasualtiesUnknown.Hotbar
             if (uiLayer >= 0) rootGo.layer = uiLayer;
             _root = rootGo.GetComponent<RectTransform>();
             _root.SetParent(canvas.transform, false);
+            PlaceBeforeCanvasOverlays(cam, canvas.transform, _root);
 
             for (int i = 0; i < _builtCount; i++)
             {
@@ -130,7 +155,43 @@ namespace CasualtiesUnknown.Hotbar
             }
 
             var font = ResolveBuiltinFont();
-            ModLog.Debug("UI", $"重建快捷栏 UGUI：槽数={_builtCount} UI层={uiLayer} 字体={(font != null ? font.name : "null")}");
+            ModLog.Debug("UI", $"重建快捷栏 UGUI：槽数={_builtCount} UI层={uiLayer} sibling={_root.GetSiblingIndex()} 字体={(font != null ? font.name : "null")}");
+        }
+
+        private static void PlaceBeforeCanvasOverlays(PlayerCamera cam, Transform canvasTransform, Transform rootTransform)
+        {
+            if (canvasTransform == null || rootTransform == null || rootTransform.parent != canvasTransform) return;
+
+            int minSibling = int.MaxValue;
+            if (cam != null)
+            {
+                ConsiderOverlaySibling(cam.dragImage != null ? cam.dragImage.transform : null, canvasTransform, rootTransform, ref minSibling);
+                ConsiderOverlaySibling(cam.endScreen != null ? cam.endScreen.transform : null, canvasTransform, rootTransform, ref minSibling);
+                ConsiderOverlaySibling(cam.consciousnessFade != null ? cam.consciousnessFade.transform : null, canvasTransform, rootTransform, ref minSibling);
+            }
+            var pauseMain = PauseHandler.main;
+            if (pauseMain != null && pauseMain.pauseContainer != null)
+            {
+                ConsiderOverlaySibling(pauseMain.pauseContainer.transform, canvasTransform, rootTransform, ref minSibling);
+            }
+
+            // 仅当 _root 排在任一顶层遮罩之后时前移；若已在遮罩之前，重复 SetSiblingIndex(minSibling) 会反向越过该遮罩
+            if (minSibling < int.MaxValue && rootTransform.GetSiblingIndex() > minSibling)
+            {
+                rootTransform.SetSiblingIndex(minSibling);
+            }
+        }
+
+        private static void ConsiderOverlaySibling(Transform candidate, Transform canvasTransform, Transform self, ref int minSibling)
+        {
+            if (candidate == null) return;
+            while (candidate.parent != null && candidate.parent != canvasTransform)
+            {
+                candidate = candidate.parent;
+            }
+            if (candidate.parent != canvasTransform || candidate == self) return;
+            int idx = candidate.GetSiblingIndex();
+            if (idx < minSibling) minSibling = idx;
         }
 
         private Slot BuildSlot(int index, int uiLayer)
@@ -154,41 +215,55 @@ namespace CasualtiesUnknown.Hotbar
             border.type = Image.Type.Sliced;
             border.fillCenter = true;
 
+            // 图标上移 2px 并收窄至 SlotSize - 16f，避开底部 4px 状态条使视觉重心居中
             var icon = NewImage("Icon", rect, Color.white, uiLayer);
-            icon.rectTransform.anchoredPosition = Vector2.zero;
+            icon.rectTransform.anchoredPosition = new Vector2(0f, 2f);
             icon.preserveAspect = true;
             icon.enabled = false;
+
+            float statusFullWidth = SlotSize - StatusBarInset * 2f;
+            var statusTrack = NewImage("StatusTrack", rect, StatusTrackColor, uiLayer);
+            var stRect = statusTrack.rectTransform;
+            stRect.anchorMin = Vector2.zero;
+            stRect.anchorMax = Vector2.zero;
+            stRect.pivot = Vector2.zero;
+            stRect.anchoredPosition = new Vector2(StatusBarInset, StatusBarInset);
+            stRect.sizeDelta = new Vector2(statusFullWidth, StatusBarHeight);
+            statusTrack.enabled = false;
 
             var statusBar = NewImage("Status", rect, Color.white, uiLayer);
             var sbRect = statusBar.rectTransform;
             sbRect.anchorMin = Vector2.zero;
             sbRect.anchorMax = Vector2.zero;
             sbRect.pivot = Vector2.zero;
-            sbRect.anchoredPosition = new Vector2(2f, 2f);
-            sbRect.sizeDelta = new Vector2(SlotSize - 4f, StatusBarHeight);
+            sbRect.anchoredPosition = new Vector2(StatusBarInset, StatusBarInset);
+            sbRect.sizeDelta = new Vector2(statusFullWidth, StatusBarHeight);
             statusBar.enabled = false;
 
-            var count = NewText("Count", rect, 16, TextAnchor.LowerRight, uiLayer);
+            var selFrame = BuildSelFrame(rect, uiLayer);
+
+            var count = NewText("Count", rect, 14, TextAnchor.LowerRight, uiLayer);
             var cRect = count.rectTransform;
             cRect.anchorMin = new Vector2(1f, 0f);
             cRect.anchorMax = new Vector2(1f, 0f);
             cRect.pivot = new Vector2(1f, 0f);
-            cRect.anchoredPosition = new Vector2(-3f, 7f);
-            cRect.sizeDelta = new Vector2(40f, 20f);
+            cRect.anchoredPosition = new Vector2(-5f, 9f);
+            cRect.sizeDelta = new Vector2(SlotSize - 10f, 18f);
             count.text = "";
 
-            var sc = _cfg.SlotHotkey(index).Value;
-            var key = NewText("Key", rect, 14, TextAnchor.UpperLeft, uiLayer);
+            var hotkeyEntry = _cfg.SlotHotkey(index);
+            if (_subscribedSlots.Add(index))
+                hotkeyEntry.SettingChanged += _onSlotHotkeyChanged;
+
+            var key = NewText("Key", rect, 13, TextAnchor.UpperLeft, uiLayer);
             var kRect = key.rectTransform;
             kRect.anchorMin = new Vector2(0f, 1f);
             kRect.anchorMax = new Vector2(0f, 1f);
             kRect.pivot = new Vector2(0f, 1f);
-            kRect.anchoredPosition = new Vector2(3f, -2f);
-            kRect.sizeDelta = new Vector2(48f, 18f);
-            key.color = new Color(1f, 1f, 1f, 0.8f);
-            key.text = FormatKeyLabel(sc);
-
-            var selFrame = BuildSelFrame(rect, uiLayer);
+            kRect.anchoredPosition = new Vector2(5f, -4f);
+            kRect.sizeDelta = new Vector2(SlotSize - 10f, 18f);
+            key.color = KeyUnselectedColor;
+            key.text = FormatKeyLabel(hotkeyEntry.Value);
 
             return new Slot
             {
@@ -196,13 +271,13 @@ namespace CasualtiesUnknown.Hotbar
                 Bg = bg,
                 Border = border,
                 Icon = icon,
+                StatusTrack = statusTrack,
                 Status = statusBar,
                 Count = count,
                 Key = key,
                 SelFrame = selFrame,
                 LastCount = 0,
-                LastShortcut = sc,
-                HasShortcut = true,
+                AppliedVersion = _hotkeyDirtyVersion,
             };
         }
 
@@ -213,21 +288,22 @@ namespace CasualtiesUnknown.Hotbar
             var frameRect = frameGo.GetComponent<RectTransform>();
             frameRect.SetParent(parent, false);
             StretchFull(frameRect);
-            AddEdge(frameRect, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, SelFrameThickness), uiLayer);
-            AddEdge(frameRect, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, SelFrameThickness), uiLayer);
-            AddEdge(frameRect, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(SelFrameThickness, 0f), uiLayer);
-            AddEdge(frameRect, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(SelFrameThickness, 0f), uiLayer);
+            // 锚点与轴心严格向内对齐 0..3px 环带，避免向外溢出槽位及四角重叠
+            AddEdge(frameRect, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, SelFrameThickness), uiLayer);
+            AddEdge(frameRect, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, SelFrameThickness), uiLayer);
+            AddEdge(frameRect, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(SelFrameThickness, -SelFrameThickness * 2f), uiLayer);
+            AddEdge(frameRect, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(SelFrameThickness, -SelFrameThickness * 2f), uiLayer);
             frameGo.SetActive(false);
             return frameGo;
         }
 
-        private static void AddEdge(RectTransform parent, Vector2 anchorMin, Vector2 anchorMax, Vector2 size, int uiLayer)
+        private static void AddEdge(RectTransform parent, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 size, int uiLayer)
         {
             var edge = NewImage("Edge", parent, SelFrameColor, uiLayer);
             var r = edge.rectTransform;
             r.anchorMin = anchorMin;
             r.anchorMax = anchorMax;
-            r.pivot = new Vector2(0.5f, 0.5f);
+            r.pivot = pivot;
             r.sizeDelta = size;
             r.anchoredPosition = Vector2.zero;
         }
@@ -297,6 +373,7 @@ namespace CasualtiesUnknown.Hotbar
         {
             float bgA = Mathf.Clamp01(_cfg.BackgroundAlpha.Value);
             float borderA = Mathf.Clamp01(SlotBorder.a * (bgA / SlotBg.a));
+            int hotkeyVersion = _hotkeyDirtyVersion;
 
             for (int i = 0; i < _slots.Count; i++)
             {
@@ -308,15 +385,15 @@ namespace CasualtiesUnknown.Hotbar
                 slot.Bg.color = new Color(SlotBg.r, SlotBg.g, SlotBg.b, bgA);
                 slot.Border.color = new Color(SlotBorder.r, SlotBorder.g, SlotBorder.b, borderA);
 
-                var sc = _cfg.SlotHotkey(i).Value;
-                if (!slot.HasShortcut || !sc.Equals(slot.LastShortcut))
+                // 仅当 SettingChanged 推进脏版本号时重算角标，消除每槽每帧 KeyboardShortcut.Equals 装箱与 LINQ 分配
+                if (slot.AppliedVersion != hotkeyVersion)
                 {
-                    slot.Key.text = FormatKeyLabel(sc);
-                    slot.LastShortcut = sc;
-                    slot.HasShortcut = true;
+                    slot.Key.text = FormatKeyLabel(_cfg.SlotHotkey(i).Value);
+                    slot.AppliedVersion = hotkeyVersion;
                 }
 
                 bool isSel = i == _selected;
+                slot.Key.color = isSel ? Color.white : KeyUnselectedColor;
                 if (slot.SelFrame.activeSelf != isSel)
                     slot.SelFrame.SetActive(isSel);
             }
@@ -330,7 +407,7 @@ namespace CasualtiesUnknown.Hotbar
                 if (slot.Icon.sprite != sr.sprite)
                 {
                     slot.Icon.sprite = sr.sprite;
-                    slot.Icon.rectTransform.sizeDelta = PlayerCamera.ImageSizeDelta(sr.sprite.texture, 3f, SlotSize - 12f);
+                    slot.Icon.rectTransform.sizeDelta = PlayerCamera.ImageSizeDelta(sr.sprite.texture, 3f, IconMaxSize);
                 }
                 slot.Icon.enabled = true;
             }
@@ -352,6 +429,7 @@ namespace CasualtiesUnknown.Hotbar
         private static void ClearItemSlot(Slot slot)
         {
             slot.Icon.enabled = false;
+            slot.StatusTrack.enabled = false;
             slot.Status.enabled = false;
             if (slot.LastCount != 0)
             {
@@ -386,7 +464,8 @@ namespace CasualtiesUnknown.Hotbar
                 colorCond = fill;
             }
 
-            float innerW = SlotSize - 4f;
+            float innerW = SlotSize - StatusBarInset * 2f;
+            slot.StatusTrack.enabled = true;
             slot.Status.rectTransform.sizeDelta = new Vector2(innerW * fill, StatusBarHeight);
             slot.Status.color = PlayerCamera.ConditionToColor(colorCond);
             slot.Status.enabled = true;
@@ -468,7 +547,7 @@ namespace CasualtiesUnknown.Hotbar
 
         private static Font ResolveBuiltinFont()
         {
-            if (_fontResolved && _builtinFont != null) return _builtinFont;
+            if (_fontResolved) return _builtinFont;
             _fontResolved = true;
             // Unity 2022.2+ 内置默认字体名为 LegacyRuntime.ttf，旧版回退 Arial.ttf
             try { _builtinFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); } catch { }
@@ -492,7 +571,8 @@ namespace CasualtiesUnknown.Hotbar
 
         private static Text NewText(string name, RectTransform parent, int fontSize, TextAnchor anchor, int uiLayer)
         {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Text));
+            // 挂载黑色半透明描边，确保角标叠在医疗箱等高亮度浅色物品图标上仍具高对比度
+            var go = new GameObject(name, typeof(RectTransform), typeof(Text), typeof(Outline));
             if (uiLayer >= 0) go.layer = uiLayer;
             go.GetComponent<RectTransform>().SetParent(parent, false);
             var t = go.GetComponent<Text>();
@@ -504,6 +584,10 @@ namespace CasualtiesUnknown.Hotbar
             t.raycastTarget = false;
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.verticalOverflow = VerticalWrapMode.Overflow;
+
+            var outline = go.GetComponent<Outline>();
+            outline.effectColor = TextOutlineColor;
+            outline.effectDistance = TextOutlineDistance;
             return t;
         }
 
@@ -521,13 +605,13 @@ namespace CasualtiesUnknown.Hotbar
             public Image Bg;
             public Image Border;
             public Image Icon;
+            public Image StatusTrack;
             public Image Status;
             public Text Count;
             public Text Key;
             public GameObject SelFrame;
             public int LastCount;
-            public KeyboardShortcut LastShortcut;
-            public bool HasShortcut;
+            public int AppliedVersion;
         }
     }
 }

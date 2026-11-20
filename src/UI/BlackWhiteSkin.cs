@@ -10,32 +10,53 @@ namespace CasualtiesUnknown.Hotbar
         private static Texture2D _bgButton;
         private static Texture2D _bgButtonHover;
         private static Texture2D _bgCard;
+        private static Texture2D _bgHintCard;
         private static Texture2D _bgTab;
+        private static Texture2D _bgTabHover;
         private static Texture2D _bgTabActive;
+        private static Texture2D _bgControlBtn;
+        private static Texture2D _bgControlBtnHover;
+        private static Texture2D _bgControlBtnActive;
+        private static Texture2D _bgValueBox;
+        private static Texture2D _bgSliderTrack;
         private static Texture2D _line;
 
         private static GUIStyle _hStyle;
+        private static GUIStyle _sectionHeaderStyle;
         private static GUIStyle _hButtonStyle;
         private static GUIStyle _cardStyle;
+        private static GUIStyle _hintCardStyle;
         private static GUIStyle _tabStyle;
         private static GUIStyle _tabActiveStyle;
+        private static GUIStyle _controlBtnStyle;
+        private static GUIStyle _controlBtnActiveStyle;
+        private static GUIStyle _valueBoxStyle;
         private static GUIStyle _lineStyle;
         private static GUIStyle _iconBtnStyle;
         private static GUIStyle _rowLabelStyle;
         private static GUIStyle _hintLabelStyle;
+        private static GUIStyle _mutedLabelStyle;
         private static GUIStyle _centerTitleStyle;
+        private static GUIStyle _centerSubTitleStyle;
         private static GUIStyle _centerLabelStyle;
 
         internal static GUIStyle HeaderStyle => _hStyle;
+        internal static GUIStyle SectionHeaderStyle => _sectionHeaderStyle;
         internal static GUIStyle HeaderButtonStyle => _hButtonStyle;
         internal static GUIStyle CardStyle => _cardStyle;
+        internal static GUIStyle HintCardStyle => _hintCardStyle;
         internal static GUIStyle TabStyle => _tabStyle;
         internal static GUIStyle TabActiveStyle => _tabActiveStyle;
+        internal static GUIStyle ControlBtnStyle => _controlBtnStyle;
+        internal static GUIStyle ControlBtnActiveStyle => _controlBtnActiveStyle;
+        internal static GUIStyle ValueBoxStyle => _valueBoxStyle;
         internal static GUIStyle LineStyle => _lineStyle;
         internal static GUIStyle IconBtnStyle => _iconBtnStyle;
         internal static GUIStyle RowLabelStyle => _rowLabelStyle;
         internal static GUIStyle HintLabelStyle => _hintLabelStyle;
+        internal static GUIStyle MutedLabelStyle => _mutedLabelStyle;
         internal static GUIStyle CenterTitleStyle => _centerTitleStyle;
+        internal static GUIStyle CenterSubTitleStyle => _centerSubTitleStyle;
         internal static GUIStyle CenterLabelStyle => _centerLabelStyle;
         internal static Texture2D LineTex => _line;
 
@@ -62,19 +83,34 @@ namespace CasualtiesUnknown.Hotbar
             DestroyTexture(ref _bgButton);
             DestroyTexture(ref _bgButtonHover);
             DestroyTexture(ref _bgCard);
+            DestroyTexture(ref _bgHintCard);
             DestroyTexture(ref _bgTab);
+            DestroyTexture(ref _bgTabHover);
             DestroyTexture(ref _bgTabActive);
+            DestroyTexture(ref _bgControlBtn);
+            DestroyTexture(ref _bgControlBtnHover);
+            DestroyTexture(ref _bgControlBtnActive);
+            DestroyTexture(ref _bgValueBox);
+            DestroyTexture(ref _bgSliderTrack);
             DestroyTexture(ref _line);
+
             _hStyle = null;
+            _sectionHeaderStyle = null;
             _hButtonStyle = null;
             _cardStyle = null;
+            _hintCardStyle = null;
             _tabStyle = null;
             _tabActiveStyle = null;
+            _controlBtnStyle = null;
+            _controlBtnActiveStyle = null;
+            _valueBoxStyle = null;
             _lineStyle = null;
             _iconBtnStyle = null;
             _rowLabelStyle = null;
             _hintLabelStyle = null;
+            _mutedLabelStyle = null;
             _centerTitleStyle = null;
+            _centerSubTitleStyle = null;
             _centerLabelStyle = null;
             _previousSkin = null;
         }
@@ -138,12 +174,19 @@ namespace CasualtiesUnknown.Hotbar
         {
             if (_skin != null) return;
 
-            _bgPanel = MakeColorTex(0, 0, 0, 125);
-            _bgButton = MakeBorderedTex(0, 0, 0, 150, 255, 255, 255, 255, 2);
-            _bgButtonHover = MakeBorderedTex(60, 60, 60, 190, 255, 255, 255, 255, 2);
-            _bgCard = MakeColorTex(15, 15, 15, 105);
-            _bgTab = MakeBorderedTex(0, 0, 0, 150, 255, 255, 255, 255, 2);
-            _bgTabActive = MakeBorderedTex(255, 255, 255, 235, 255, 255, 255, 255, 2);
+            _bgPanel = MakeColorTex(8, 8, 8, 224);
+            _bgButton = MakeBorderedTex(14, 14, 14, 185, 255, 255, 255, 255, 2);
+            _bgButtonHover = MakeBorderedTex(58, 58, 58, 215, 255, 255, 255, 255, 2);
+            _bgCard = MakeBorderedTex(16, 16, 16, 170, 255, 255, 255, 55, 1);
+            _bgHintCard = MakeBorderedTex(255, 255, 255, 16, 255, 255, 255, 42, 1);
+            _bgTab = MakeBorderedTex(12, 12, 12, 180, 255, 255, 255, 220, 2);
+            _bgTabHover = MakeBorderedTex(52, 52, 52, 215, 255, 255, 255, 255, 2);
+            _bgTabActive = MakeBorderedTex(255, 255, 255, 240, 255, 255, 255, 255, 2);
+            _bgControlBtn = MakeBorderedTex(20, 20, 20, 190, 255, 255, 255, 150, 1);
+            _bgControlBtnHover = MakeBorderedTex(58, 58, 58, 220, 255, 255, 255, 240, 1);
+            _bgControlBtnActive = MakeBorderedTex(255, 255, 255, 240, 255, 255, 255, 255, 1);
+            _bgValueBox = MakeBorderedTex(255, 255, 255, 20, 255, 255, 255, 68, 1);
+            _bgSliderTrack = MakeBorderedTex(30, 30, 30, 225, 255, 255, 255, 105, 1);
             _line = MakeColorTex(255, 255, 255, 255);
 
             _skin = ScriptableObject.CreateInstance<GUISkin>();
@@ -154,105 +197,221 @@ namespace CasualtiesUnknown.Hotbar
             ApplyMonochrome(_skin.window, _bgPanel, Color.white);
             ApplyMonochrome(_skin.button, _bgButton, Color.white, _bgButtonHover);
             ApplyMonochrome(_skin.label, null, Color.white);
-            ApplyMonochrome(_skin.textField, _bgCard, Color.white);
-            ApplyMonochrome(_skin.textArea, _bgCard, Color.white);
+            ApplyMonochrome(_skin.textField, _bgValueBox, Color.white);
+            ApplyMonochrome(_skin.textArea, _bgValueBox, Color.white);
             ApplyMonochrome(_skin.toggle, null, Color.white);
-            ApplyMonochrome(_skin.horizontalSlider, _bgCard, Color.white);
+            ApplyMonochrome(_skin.horizontalSlider, _bgSliderTrack, Color.white);
             ApplyMonochrome(_skin.horizontalSliderThumb, _line, Color.black);
-            ApplyMonochrome(_skin.verticalScrollbar, _bgCard, Color.white);
+            ApplyMonochrome(_skin.verticalScrollbar, _bgSliderTrack, Color.white);
             ApplyMonochrome(_skin.verticalScrollbarThumb, _line, Color.black);
-            ApplyMonochrome(_skin.scrollView, _bgPanel, Color.white);
+            ClearBackgrounds(_skin.scrollView);
 
-            _skin.horizontalSlider.fixedHeight = 28f;
-            _skin.horizontalSlider.padding = new RectOffset(2, 2, 10, 10);
-            _skin.horizontalSliderThumb.fixedHeight = 44f;
-            _skin.horizontalSliderThumb.fixedWidth = 36f;
-            _skin.verticalScrollbar.fixedWidth = 24f;
-            _skin.verticalScrollbarThumb.fixedWidth = 24f;
+            // 独立高对比滑条导轨：14px 轨道配上下 -7 padding，使 28px 白滑块严格垂直居中跨骑在导轨上
+            _skin.horizontalSlider.fixedHeight = 14f;
+            _skin.horizontalSlider.border = new RectOffset(2, 2, 2, 2);
+            _skin.horizontalSlider.margin = new RectOffset(4, 4, 12, 12);
+            _skin.horizontalSlider.padding = new RectOffset(0, 0, -7, -7);
+            _skin.horizontalSliderThumb.fixedWidth = 16f;
+            _skin.horizontalSliderThumb.fixedHeight = 28f;
+            _skin.horizontalSliderThumb.margin = new RectOffset(0, 0, 0, 0);
+            _skin.horizontalSliderThumb.overflow = new RectOffset(0, 0, 0, 0);
+
+            _skin.verticalScrollbar.fixedWidth = 14f;
+            _skin.verticalScrollbar.border = new RectOffset(2, 2, 2, 2);
+            _skin.verticalScrollbarThumb.fixedWidth = 14f;
 
             _skin.button.alignment = TextAnchor.MiddleCenter;
-            _skin.button.fontSize = 20;
+            _skin.button.fontSize = 19;
             _skin.button.fontStyle = FontStyle.Bold;
-            _skin.button.padding = new RectOffset(14, 14, 10, 10);
+            _skin.button.padding = new RectOffset(12, 12, 8, 8);
             _skin.button.border = new RectOffset(2, 2, 2, 2);
             _skin.button.wordWrap = false;
             _skin.button.clipping = TextClipping.Overflow;
-            _skin.label.fontSize = 20;
+            _skin.label.fontSize = 19;
             _skin.label.fontStyle = FontStyle.Bold;
             _skin.label.wordWrap = false;
             _skin.label.clipping = TextClipping.Overflow;
-            _skin.textField.fontSize = 20;
+            _skin.textField.fontSize = 19;
             _skin.textField.fontStyle = FontStyle.Bold;
-            _skin.textField.padding = new RectOffset(12, 12, 8, 8);
-            _skin.toggle.fontSize = 20;
+            _skin.textField.border = new RectOffset(2, 2, 2, 2);
+            _skin.textField.padding = new RectOffset(10, 10, 6, 6);
+            _skin.toggle.fontSize = 19;
             _skin.toggle.fontStyle = FontStyle.Bold;
-            _skin.box.fontSize = 20;
+            _skin.box.fontSize = 19;
             _skin.box.fontStyle = FontStyle.Bold;
 
             _hStyle = new GUIStyle(_skin.label)
             {
-                fontSize = 32,
+                fontSize = 30,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleLeft,
                 wordWrap = false,
                 clipping = TextClipping.Overflow,
             };
 
-            _hButtonStyle = new GUIStyle(_skin.button)
+            _sectionHeaderStyle = new GUIStyle(_skin.label)
             {
-                fontSize = 28,
+                fontSize = 22,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleLeft,
-                padding = new RectOffset(20, 20, 12, 12),
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(2, 2, 2, 2),
             };
-            ApplyMonochrome(_hButtonStyle, _bgButton, Color.white, _bgButtonHover);
 
-            _cardStyle = new GUIStyle(_skin.box) { padding = new RectOffset(20, 20, 18, 18) };
-            ApplyMonochrome(_cardStyle, _bgCard, Color.white);
-
-            _tabStyle = new GUIStyle(_skin.button)
+            _hButtonStyle = new GUIStyle(_skin.button)
             {
                 fontSize = 26,
                 fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter,
+                alignment = TextAnchor.MiddleLeft,
+                border = new RectOffset(2, 2, 2, 2),
+                padding = new RectOffset(18, 18, 10, 10),
             };
-            ApplyMonochrome(_tabStyle, _bgTab, Color.white);
+            ApplyMonochrome(_hButtonStyle, _bgButton, Color.white, _bgButtonHover);
+
+            _cardStyle = new GUIStyle(_skin.box)
+            {
+                border = new RectOffset(2, 2, 2, 2),
+                padding = new RectOffset(18, 18, 14, 14),
+                margin = new RectOffset(0, 0, 2, 2),
+            };
+            ApplyMonochrome(_cardStyle, _bgCard, Color.white);
+
+            _hintCardStyle = new GUIStyle(_skin.box)
+            {
+                border = new RectOffset(2, 2, 2, 2),
+                padding = new RectOffset(14, 14, 10, 10),
+                margin = new RectOffset(0, 0, 2, 2),
+            };
+            ApplyMonochrome(_hintCardStyle, _bgHintCard, Color.white);
+
+            _tabStyle = new GUIStyle(_skin.button)
+            {
+                fontSize = 22,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                border = new RectOffset(2, 2, 2, 2),
+                padding = new RectOffset(14, 14, 8, 8),
+                margin = new RectOffset(0, 0, 0, 0),
+            };
+            ApplyMonochrome(_tabStyle, _bgTab, Color.white, _bgTabHover);
 
             _tabActiveStyle = new GUIStyle(_tabStyle);
             ApplyMonochrome(_tabActiveStyle, _bgTabActive, Color.black);
+
+            // 水平 margin 置零，使行内多按钮组仅由显式 GUILayout.Space 控制间距，确保 200px/296px 网格像素级齐平
+            _controlBtnStyle = new GUIStyle(_skin.button)
+            {
+                fontSize = 19,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                border = new RectOffset(2, 2, 2, 2),
+                padding = new RectOffset(10, 10, 6, 6),
+                margin = new RectOffset(0, 0, 0, 0),
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+            };
+            ApplyMonochrome(_controlBtnStyle, _bgControlBtn, Color.white, _bgControlBtnHover);
+
+            _controlBtnActiveStyle = new GUIStyle(_controlBtnStyle);
+            ApplyMonochrome(_controlBtnActiveStyle, _bgControlBtnActive, Color.black);
+
+            _valueBoxStyle = new GUIStyle(_skin.box)
+            {
+                fontSize = 19,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                border = new RectOffset(2, 2, 2, 2),
+                padding = new RectOffset(6, 6, 6, 6),
+                margin = new RectOffset(0, 0, 0, 0),
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+            };
+            ApplyMonochrome(_valueBoxStyle, _bgValueBox, Color.white);
 
             _iconBtnStyle = new GUIStyle(_skin.button)
             {
                 padding = new RectOffset(2, 2, 2, 2),
                 margin = new RectOffset(2, 2, 0, 0),
+                border = new RectOffset(2, 2, 2, 2),
                 alignment = TextAnchor.MiddleCenter,
-                fontSize = 22,
+                fontSize = 20,
                 fontStyle = FontStyle.Bold,
             };
             ApplyMonochrome(_iconBtnStyle, _bgButton, Color.white, _bgButtonHover);
 
-            _lineStyle = new GUIStyle(_skin.label) { fixedHeight = 1f };
+            _lineStyle = new GUIStyle(_skin.label)
+            {
+                fixedHeight = 1f,
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(0, 0, 0, 0),
+            };
 
             _rowLabelStyle = new GUIStyle(_skin.label)
             {
-                wordWrap = false,
-                clipping = TextClipping.Overflow,
+                fontSize = 19,
+                fontStyle = FontStyle.Bold,
+                wordWrap = true,
+                clipping = TextClipping.Clip,
                 alignment = TextAnchor.MiddleLeft,
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(0, 8, 2, 2),
             };
 
             _hintLabelStyle = new GUIStyle(_skin.label)
             {
+                fontSize = 17,
+                fontStyle = FontStyle.Normal,
                 wordWrap = true,
                 clipping = TextClipping.Clip,
-                alignment = TextAnchor.UpperLeft,
+                alignment = TextAnchor.MiddleLeft,
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(2, 2, 2, 2),
             };
+            ApplyMonochrome(_hintLabelStyle, null, new Color(1f, 1f, 1f, 0.82f));
 
-            _centerTitleStyle = new GUIStyle(_hStyle) { alignment = TextAnchor.MiddleCenter };
+            _mutedLabelStyle = new GUIStyle(_skin.label)
+            {
+                fontSize = 17,
+                fontStyle = FontStyle.Bold,
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+                alignment = TextAnchor.MiddleRight,
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(4, 2, 2, 2),
+            };
+            ApplyMonochrome(_mutedLabelStyle, null, new Color(1f, 1f, 1f, 0.65f));
+
+            _centerTitleStyle = new GUIStyle(_skin.label)
+            {
+                fontSize = 26,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+            };
+            ApplyMonochrome(_centerTitleStyle, null, Color.white);
+
+            _centerSubTitleStyle = new GUIStyle(_skin.label)
+            {
+                fontSize = 20,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+            };
+            ApplyMonochrome(_centerSubTitleStyle, null, Color.white);
+
             _centerLabelStyle = new GUIStyle(_skin.label)
             {
+                fontSize = 18,
+                fontStyle = FontStyle.Normal,
                 alignment = TextAnchor.MiddleCenter,
                 wordWrap = true,
+                clipping = TextClipping.Clip,
             };
+            ApplyMonochrome(_centerLabelStyle, null, new Color(1f, 1f, 1f, 0.85f));
         }
 
         private static void CopyDefaultsInto(GUISkin dst)
@@ -271,6 +430,18 @@ namespace CasualtiesUnknown.Hotbar
             dst.verticalScrollbar = new GUIStyle(defaults.verticalScrollbar);
             dst.verticalScrollbarThumb = new GUIStyle(defaults.verticalScrollbarThumb);
             dst.scrollView = new GUIStyle(defaults.scrollView);
+        }
+
+        private static void ClearBackgrounds(GUIStyle s)
+        {
+            s.normal.background = null;
+            s.onNormal.background = null;
+            s.active.background = null;
+            s.onActive.background = null;
+            s.focused.background = null;
+            s.onFocused.background = null;
+            s.hover.background = null;
+            s.onHover.background = null;
         }
 
         private static void ApplyMonochrome(GUIStyle s, Texture2D bg, Color text, Texture2D hoverBg = null)
@@ -309,7 +480,8 @@ namespace CasualtiesUnknown.Hotbar
         private static Texture2D MakeBorderedTex(byte fr, byte fg, byte fb, byte fa,
             byte br, byte bg, byte bb, byte ba, int borderPx)
         {
-            int size = borderPx * 2 + 2;
+            // 内部保留 4x4 纯填充中心区，避免九宫格 border=RectOffset(2,2,2,2) 拉伸时中心区宽度退化为 0
+            int size = borderPx * 2 + 4;
             var t = new Texture2D(size, size, TextureFormat.RGBA32, false)
             {
                 hideFlags = HideFlags.HideAndDontSave,

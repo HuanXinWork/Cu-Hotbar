@@ -19,7 +19,7 @@ namespace CasualtiesUnknown.Hotbar
     {
         internal const string PluginGuid = "com.casualtiesUnknown.hotbar";
         internal const string PluginName = "CuHotbar";
-        internal const string PluginVersion = "1.0.9";
+        internal const string PluginVersion = "1.1.0";
 
         private const string SaveManagerGuid = "com.casualtiesUnknown.saveManager";
         private const string TogetherGuid = "CasualtiesMP";
@@ -32,6 +32,8 @@ namespace CasualtiesUnknown.Hotbar
         private HotbarView _view;
         private HotbarWindow _window;
         private InGameOverlay _overlay;
+        private Action _openWindowFromOverlay;
+        private UpdateChecker _updateChecker;
         private Harmony _harmony;
         private bool _standalone;
         private bool _quitting;
@@ -51,7 +53,8 @@ namespace CasualtiesUnknown.Hotbar
             ModLog.ShowInConsole = _cfg.ShowLogInConsole.Value;
             _cfg.ShowLogInConsole.SettingChanged += (_, __) => ModLog.ShowInConsole = _cfg.ShowLogInConsole.Value;
             UpdateChecker.Enabled = _cfg.AcceptUpdateNotice.Value;
-            _cfg.AcceptUpdateNotice.SettingChanged += (_, __) => UpdateChecker.Enabled = _cfg.AcceptUpdateNotice.Value;
+            _cfg.AcceptUpdateNotice.SettingChanged += (_, __) =>
+                UpdateChecker.NotifySettingChanged(_updateChecker, _cfg.AcceptUpdateNotice.Value);
             LogConfigDump(_cfg);
 
             _store = new HotbarStore();
@@ -72,7 +75,7 @@ namespace CasualtiesUnknown.Hotbar
                 ModLog.Error("Patches", $"Harmony 补丁装载失败：{ex}");
             }
 
-            gameObject.AddComponent<UpdateChecker>();
+            _updateChecker = gameObject.AddComponent<UpdateChecker>();
 
             _standalone = !Chainloader.PluginInfos.ContainsKey(SaveManagerGuid);
             ModLog.Debug("Interop", _standalone
@@ -93,6 +96,7 @@ namespace CasualtiesUnknown.Hotbar
             if (_standalone)
             {
                 _window = new HotbarWindow(_cfg);
+                _openWindowFromOverlay = () => _window.OpenIfClosed();
                 _overlay = new InGameOverlay();
                 MenuButtonInjector.Setup(() => _window.Toggle());
                 SceneManager.sceneLoaded += OnSceneLoaded;
@@ -141,7 +145,7 @@ namespace CasualtiesUnknown.Hotbar
             bool textInput = _standalone && _window != null && _window.ExpectsTextInput;
             ImGuiImeRecovery.TickOnGui(textInput);
             if (_standalone && (_window == null || !_window.Open))
-                _overlay?.Draw(() => _window.OpenIfClosed());
+                _overlay?.Draw(_openWindowFromOverlay);
             _window?.Draw();
         }
 

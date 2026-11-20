@@ -17,9 +17,11 @@ namespace CasualtiesUnknown.Hotbar
         private int _snapshotFrame = -1;
         private Body _snapshotBody;
 
-        private Item[] _items;
-        private string[] _ids;
+        private readonly Item[] _items = new Item[HotbarConfig.MaxSlots];
+        private readonly string[] _ids = new string[HotbarConfig.MaxSlots];
+        private int _slotCount;
         private int _runId;
+        private Body _trackedBody;
 
         private int _activeIndex = -1;
         private Item _activeItem;
@@ -29,20 +31,25 @@ namespace CasualtiesUnknown.Hotbar
         {
             _cfg = cfg;
             _store = store;
+            for (int i = 0; i < HotbarConfig.MaxSlots; i++)
+            {
+                _ids[i] = "";
+            }
             Resize(cfg.SlotCount.Value);
             cfg.SlotCount.SettingChanged += (_, __) => Resize(cfg.SlotCount.Value);
         }
 
-        internal int SlotCount => _ids.Length;
+        internal int SlotCount => _slotCount;
 
         /// <summary>解析第 index 槽随身物品；已跟踪实例销毁或离身时按 AutoRefill 重绑同种或清除。</summary>
         internal Item GetItem(int index)
         {
-            if (index < 0 || index >= _items.Length) return null;
+            if (index < 0 || index >= _slotCount) return null;
             var body = CurrentBody();
+            SyncTrackedBody(body);
             var cur = _items[index];
 
-            // 用 ReferenceEquals 区分“尚未解析（null）”与“曾绑定但被 Destroy 销毁（Unity fake-null）”
+            // 用 ReferenceEquals 区分尚未解析的真 null 与曾绑定但已 Destroy 的 Unity fake-null
             if (!ReferenceEquals(cur, null) && body != null && (cur == null || !InBody(body, cur)))
             {
                 cur = null;
@@ -71,7 +78,7 @@ namespace CasualtiesUnknown.Hotbar
 
         internal string GetId(int index)
         {
-            if (index < 0 || index >= _ids.Length) return "";
+            if (index < 0 || index >= _slotCount) return "";
             return _ids[index] ?? "";
         }
 
@@ -88,10 +95,11 @@ namespace CasualtiesUnknown.Hotbar
         /// <summary>绑定第 index 槽到指定物品（同种 ID 唯一占槽，自动移除旧槽重复绑定）。</summary>
         internal void Link(int index, Item item)
         {
-            if (index < 0 || index >= _ids.Length) return;
+            if (index < 0 || index >= _slotCount) return;
 
             string newId = item != null ? (item.id ?? "") : "";
             var body = CurrentBody();
+            SyncTrackedBody(body);
             Item newTracked = item != null && body != null && InBody(body, item) && ItemMover.CanBeHeld(body, item)
                 ? item
                 : null;
@@ -100,7 +108,7 @@ namespace CasualtiesUnknown.Hotbar
 
             if (item != null)
             {
-                for (int i = 0; i < _ids.Length; i++)
+                for (int i = 0; i < HotbarConfig.MaxSlots; i++)
                 {
                     if (i == index) continue;
                     if (_items[i] == item || (!string.IsNullOrEmpty(newId) && _ids[i] == newId))
@@ -124,7 +132,7 @@ namespace CasualtiesUnknown.Hotbar
 
         internal void Clear(int index)
         {
-            if (index < 0 || index >= _ids.Length) return;
+            if (index < 0 || index >= _slotCount) return;
             _items[index] = null;
             _ids[index] = "";
             if (_activeIndex == index) ClearActive();
@@ -132,10 +140,23 @@ namespace CasualtiesUnknown.Hotbar
             SaveForCurrentRun();
         }
 
+        internal void ClearAll()
+        {
+            for (int i = 0; i < HotbarConfig.MaxSlots; i++)
+            {
+                _items[i] = null;
+                _ids[i] = "";
+            }
+            ClearActive();
+            ModLog.Flow("Slot", "清空全部槽位", $"runId={_runId} 当前槽数={_slotCount}");
+            SaveForCurrentRun();
+        }
+
         internal bool IsConsumableSlot(int index)
         {
             var body = CurrentBody();
             if (body == null) return false;
+            SyncTrackedBody(body);
             Item target = Resolve(index, body);
             return target != null && ConsumableClassifier.IsConsumable(target);
         }
@@ -143,11 +164,13 @@ namespace CasualtiesUnknown.Hotbar
         /// <summary>触发使用键：优先直接服用选中的安全消耗品，否则使用主手物品。</summary>
         internal void UseSelected(int index)
         {
+            var cam = PlayerCamera.main;
+            if (cam != null && cam.blockItemUsage) return;
+
             var body = CurrentBody();
             if (body == null || !body.conscious) return;
             if (!body.allowUseItem)
             {
-                var cam = PlayerCamera.main;
                 if (cam != null) cam.UseFailUnhappiness();
                 ModLog.Debug("Slot", "使用物品被拒绝：角色情绪低落");
                 return;
@@ -177,8 +200,10 @@ namespace CasualtiesUnknown.Hotbar
         /// <summary>将第 index 槽物品切入主手；槽位无可用物品时仅收起当前主手快捷栏物品。</summary>
         internal bool Activate(int index)
         {
+            if (index < 0 || index >= _slotCount) return false;
             var body = CurrentBody();
             if (body == null || !body.conscious) return false;
+            SyncTrackedBody(body);
 
             Item target = ResolveHoldable(index, body);
             if (target == null)
@@ -237,13 +262,15 @@ namespace CasualtiesUnknown.Hotbar
         /// <summary>激活物品离身时按 AutoRefill 自动补同种，仍在身上但离手则解除跟踪。</summary>
         internal void RefillActiveIfNeeded()
         {
-            if (_activeIndex < 0 || _activeIndex >= _ids.Length)
+            if (_activeIndex < 0 || _activeIndex >= _slotCount)
             {
-                _activeItem = null;
+                ClearActive();
                 return;
             }
             var body = CurrentBody();
             if (body == null || !body.conscious) return;
+            SyncTrackedBody(body);
+            if (_activeIndex < 0) return;
 
             if (_activeItem != null && InBody(body, _activeItem))
             {
@@ -289,7 +316,7 @@ namespace CasualtiesUnknown.Hotbar
 
         private void RestorePrevious(Body body)
         {
-            if (_activeIndex < 0 || _activeIndex >= _items.Length)
+            if (_activeIndex < 0 || _activeIndex >= _slotCount)
             {
                 ClearActive();
                 return;
@@ -320,8 +347,9 @@ namespace CasualtiesUnknown.Hotbar
         internal void Refresh()
         {
             var body = CurrentBody();
+            SyncTrackedBody(body);
             if (body != null) EnsureBodySnapshot(body);
-            for (int i = 0; i < _items.Length; i++)
+            for (int i = 0; i < _slotCount; i++)
             {
                 GetItem(i);
             }
@@ -392,8 +420,9 @@ namespace CasualtiesUnknown.Hotbar
         internal void LoadForCurrentRun()
         {
             _runId = HotbarStore.CurrentRunId();
+            _trackedBody = CurrentBody();
             var ids = _store.Load(_runId);
-            for (int i = 0; i < _ids.Length; i++)
+            for (int i = 0; i < HotbarConfig.MaxSlots; i++)
             {
                 _ids[i] = i < ids.Count ? (ids[i] ?? "") : "";
                 _items[i] = null;
@@ -411,19 +440,37 @@ namespace CasualtiesUnknown.Hotbar
             {
                 if (!string.IsNullOrEmpty(ids[i])) filled++;
             }
-            ModLog.Debug("Slot", $"载入 runId={runId}：文件 {ids.Count} 条，非空 {filled} 条，总槽数 {_ids.Length}");
+            ModLog.Debug("Slot", $"载入 runId={runId}：文件 {ids.Count} 条，非空 {filled} 条，当前槽数 {_slotCount}");
         }
 
         internal void SaveForCurrentRun()
         {
             if (_runId == 0) _runId = HotbarStore.CurrentRunId();
             if (_runId == 0) return;
-            _store.Save(_runId, new List<string>(_ids));
+
+            int lastNonEmpty = -1;
+            for (int i = HotbarConfig.MaxSlots - 1; i >= 0; i--)
+            {
+                if (!string.IsNullOrEmpty(_ids[i]))
+                {
+                    lastNonEmpty = i;
+                    break;
+                }
+            }
+
+            // 保留高槽位历史非空绑定的同时裁掉多余空尾，防止临时缩减槽数再保存时抹除尾部绑定
+            int saveLen = Mathf.Max(_slotCount, lastNonEmpty + 1);
+            var list = new List<string>(saveLen);
+            for (int i = 0; i < saveLen; i++)
+            {
+                list.Add(_ids[i] ?? "");
+            }
+            _store.Save(_runId, list);
         }
 
         private Item Resolve(int index, Body body)
         {
-            if (index < 0 || index >= _items.Length || body == null) return null;
+            if (index < 0 || index >= _slotCount || body == null) return null;
             var cached = _items[index];
             if (cached != null)
             {
@@ -438,7 +485,7 @@ namespace CasualtiesUnknown.Hotbar
 
         private Item ResolveHoldable(int index, Body body)
         {
-            if (index < 0 || index >= _items.Length || body == null) return null;
+            if (index < 0 || index >= _slotCount || body == null) return null;
             var cached = _items[index];
             if (cached != null && InBody(body, cached) && ItemMover.CanBeHeld(body, cached))
                 return cached;
@@ -452,23 +499,32 @@ namespace CasualtiesUnknown.Hotbar
 
         private void Resize(int count)
         {
-            count = Mathf.Clamp(count, 1, HotbarConfig.MaxSlots);
-            var newItems = new Item[count];
-            var newIds = new string[count];
-            for (int i = 0; i < count; i++)
+            _slotCount = Mathf.Clamp(count, 1, HotbarConfig.MaxSlots);
+            // 仅释放超出当前槽数的实例引用而不清空 _ids，确保缩减后再调大槽数可恢复原绑定
+            for (int i = _slotCount; i < HotbarConfig.MaxSlots; i++)
             {
-                newItems[i] = _items != null && i < _items.Length ? _items[i] : null;
-                newIds[i] = _ids != null && i < _ids.Length ? _ids[i] : "";
+                _items[i] = null;
             }
-            _items = newItems;
-            _ids = newIds;
-            if (_activeIndex >= count) ClearActive();
+            if (_activeIndex >= _slotCount) ClearActive();
+        }
+
+        // 同 runId 读档换躯体时重置已跟踪物品引用，防止 AutoRefill 关闭时将旧躯体销毁实例误判为耗尽清槽
+        private void SyncTrackedBody(Body body)
+        {
+            if (body == _trackedBody) return;
+            for (int i = 0; i < HotbarConfig.MaxSlots; i++)
+            {
+                _items[i] = null;
+            }
+            ClearActive();
+            _trackedBody = body;
         }
 
         private static Body CurrentBody()
         {
             var cam = PlayerCamera.main;
-            return cam != null ? cam.body : null;
+            var body = cam != null ? cam.body : null;
+            return body != null ? body : null;
         }
     }
 }

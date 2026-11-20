@@ -1,3 +1,4 @@
+using System;
 using HarmonyLib;
 using UnityEngine;
 
@@ -7,10 +8,22 @@ namespace CasualtiesUnknown.Hotbar
     internal static class AmmoLoader
     {
         private const float ReloadCooldown = 0.35f;
-        private static readonly AccessTools.FieldRef<GunScript, float> GasTimeRef =
-            AccessTools.FieldRefAccess<GunScript, float>("gasTime");
+        private static readonly AccessTools.FieldRef<GunScript, float> GasTimeRef = CreateGasTimeRef();
 
         private static float _nextReloadAt;
+
+        private static AccessTools.FieldRef<GunScript, float> CreateGasTimeRef()
+        {
+            try
+            {
+                return AccessTools.FieldRefAccess<GunScript, float>("gasTime");
+            }
+            catch (Exception ex)
+            {
+                ModLog.Warning("Reload", $"绑定 GunScript.gasTime 字段失败，跳过导气窗口判定：{ex.Message}");
+                return null;
+            }
+        }
 
         internal static bool TryAutoReloadHandGun(Body body)
         {
@@ -28,6 +41,9 @@ namespace CasualtiesUnknown.Hotbar
             bool needMag = !gun.hasMag && gun.feedType == GunScript.FeedType.Mag;
             bool needDirect = gun.feedType == GunScript.FeedType.Direct && gun.roundsInMag < gun.magCapacity;
             if (!needChamber && !needMag && !needDirect) return false;
+
+            // 进入全身扫描前即锁定冷却窗口，防止手持缺弹空枪但身上无匹配弹药时每帧执行全量容器枚举
+            _nextReloadAt = Time.time + ReloadCooldown;
 
             // 原版 LoadMag 按 PlayerCamera.main.body.charType 判 Milky 特性，联机客机若房主非 Milky 会失步，故仅本机/房主启用
             bool allowMilkyDirectMag = !MultiplayerCompat.IsClient
@@ -72,7 +88,6 @@ namespace CasualtiesUnknown.Hotbar
 
             // 通过 Body.CombineItems 装填以触发联机同步补丁
             body.CombineItems(hand, ammoItem);
-            _nextReloadAt = Time.time + ReloadCooldown;
             return true;
         }
     }

@@ -49,9 +49,25 @@ namespace CasualtiesUnknown.Hotbar
             }
 
             _model.InvalidateSnapshot();
+            if (HandleRightClickClear()) return;
             HandleKeys();
             HandleUseItem();
             HandleScroll();
+        }
+
+        private bool HandleRightClickClear()
+        {
+            if (!Input.GetMouseButtonDown(1) || HotbarConfig.IsAnyModifierHeld()) return false;
+            if (!_view.TryGetSlotIndexAt(Input.mousePosition, out int slotIdx)) return false;
+
+            if (!string.IsNullOrEmpty(_model.GetId(slotIdx)))
+            {
+                Item prev = _model.GetItem(slotIdx);
+                _model.Clear(slotIdx);
+                PlayerCamera.main?.PlayUISound(PlayerCamera.UISoundType.MiniClick);
+                LogSlotOp("右键解绑", slotIdx, prev, "鼠标右键");
+            }
+            return true;
         }
 
         private void HandleUseItem()
@@ -72,9 +88,10 @@ namespace CasualtiesUnknown.Hotbar
             if (PauseMenuCompat.IsScrollBlockedByUi()) return;
 
             int n = _model.SlotCount;
-            int start = _view.Selected < 0 ? 0 : _view.Selected;
             int dir = scroll > 0f ? -1 : 1;
-            int idx = ((start + dir) % n + n) % n;
+            int idx = _view.Selected < 0
+                ? (dir > 0 ? 0 : n - 1)
+                : ((_view.Selected + dir) % n + n) % n;
 
             if (_cfg.SafeQuickUse.Value && _model.IsConsumableSlot(idx))
             {

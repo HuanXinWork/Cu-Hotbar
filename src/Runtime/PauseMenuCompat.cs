@@ -10,13 +10,6 @@ namespace CasualtiesUnknown.Hotbar
     /// <summary>检测暂停菜单、文本输入焦点与界面悬停，提供快捷栏统一输入门控。</summary>
     internal static class PauseMenuCompat
     {
-        private static readonly Type PauseHandlerType = typeof(PlayerCamera).Assembly.GetType("PauseHandler");
-        private static readonly PropertyInfo PauseHandlerPausedProperty =
-            PauseHandlerType?.GetProperty("paused", BindingFlags.Public | BindingFlags.Static);
-        private static readonly FieldInfo PauseHandlerMainField =
-            PauseHandlerType?.GetField("main", BindingFlags.Public | BindingFlags.Static);
-        private static readonly FieldInfo PauseHandlerContainerField =
-            PauseHandlerType?.GetField("pauseContainer", BindingFlags.Public | BindingFlags.Instance);
         private static readonly FieldInfo BrightnessPanelField =
             typeof(PlayerCamera).GetField("brightnessPanel", BindingFlags.Public | BindingFlags.Instance);
 
@@ -27,19 +20,12 @@ namespace CasualtiesUnknown.Hotbar
         internal static bool IsPauseMenuOpen()
         {
             if (PlayerCamera.main == null) return false;
-
-            if (TryGetPauseMenuVisible(out bool visible)) return visible;
-            if (BrightnessPanelField == null) return false;
-
             try
             {
-                var panel = BrightnessPanelField.GetValue(PlayerCamera.main) as GameObject;
-                return panel != null && panel.activeSelf;
+                if (PauseHandler.paused) return true;
             }
-            catch
-            {
-                return false;
-            }
+            catch { }
+            return IsPauseContainerOrFallbackActive();
         }
 
         /// <summary>当前是否处于禁止快捷栏交互的状态。</summary>
@@ -56,11 +42,13 @@ namespace CasualtiesUnknown.Hotbar
             if (ConsoleScript.instance != null && ConsoleScript.instance.active) return "游戏控制台打开";
             if (MultiplayerCompat.IsChatFocused) return "联机聊天框输入中";
             if (MinigameBase.main != null && MinigameBase.main.currentMinigame != null) return "医疗小游戏进行中";
+            if (LiquidTransfer.instance != null) return "液体转移界面打开";
             if (ScrollableText.textExists) return "剧情文本覆盖层显示中";
 
             var cam = PlayerCamera.main;
             if (cam == null || cam.body == null) return "角色未就绪";
             if (!cam.body.conscious) return "角色昏迷或死亡";
+            if (cam.blockItemUsage) return "原版禁用物品使用";
             if (cam.itemCustomizer != null && cam.itemCustomizer.activeSelf) return "物品改名界面打开";
             if (IsAnyUiInputFieldFocused()) return "UGUI输入框聚焦";
 
@@ -131,18 +119,26 @@ namespace CasualtiesUnknown.Hotbar
             return false;
         }
 
-        private static bool TryGetPauseMenuVisible(out bool visible)
+        private static bool IsPauseContainerOrFallbackActive()
         {
-            visible = false;
-            if (PauseHandlerType == null) return false;
-
             try
             {
-                bool paused = PauseHandlerPausedProperty?.GetValue(null, null) is bool pausedValue && pausedValue;
-                var main = PauseHandlerMainField?.GetValue(null) as UnityEngine.Object;
-                var pauseContainer = main != null ? PauseHandlerContainerField?.GetValue(main) as GameObject : null;
-                visible = paused || (pauseContainer != null && pauseContainer.activeSelf);
-                return true;
+                var main = PauseHandler.main;
+                if (main != null)
+                {
+                    var pauseContainer = main.pauseContainer;
+                    return pauseContainer != null && pauseContainer.activeSelf;
+                }
+            }
+            catch
+            {
+            }
+
+            if (BrightnessPanelField == null) return false;
+            try
+            {
+                var panel = BrightnessPanelField.GetValue(PlayerCamera.main) as GameObject;
+                return panel != null && panel.activeSelf;
             }
             catch
             {

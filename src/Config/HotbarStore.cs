@@ -66,13 +66,19 @@ namespace CasualtiesUnknown.Hotbar
         {
             if (runId == 0) return;
             string path = SlotsPath(runId);
+            string tmpPath = path + ".tmp";
             try
             {
-                File.WriteAllText(path, JsonConvert.SerializeObject(slotItemIds ?? new List<string>()));
+                Directory.CreateDirectory(DataRoot);
+                // net472 File.Move 无覆盖重载，先写同目录临时文件再 Copy 覆盖，防止异常中断损坏既有绑定文件
+                File.WriteAllText(tmpPath, JsonConvert.SerializeObject(slotItemIds ?? new List<string>()));
+                File.Copy(tmpPath, path, overwrite: true);
+                File.Delete(tmpPath);
                 ModLog.Debug("Store", $"已保存槽位绑定 runId={runId} -> {Path.GetFileName(path)}");
             }
             catch (Exception ex)
             {
+                try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
                 ModLog.Warning("Store", $"保存快捷栏配置失败 runId={runId}：{ex.Message}");
             }
         }

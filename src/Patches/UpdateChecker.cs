@@ -10,9 +10,8 @@ namespace CasualtiesUnknown.Hotbar
 {
     /// <summary>异步检查 GitHub 最新 Release 版本，有新版且开关启用时在主菜单左上角绘制提示。</summary>
     [DisallowMultipleComponent]
-    public class UpdateChecker : MonoBehaviour
+    internal sealed class UpdateChecker : MonoBehaviour
     {
-        private const string PluginGuid = "com.casualtiesUnknown.hotbar";
         private const string ApiUrl = "https://api.github.com/repos/HuanXinWork/Cu-Hotbar/releases/latest";
         private const string ReleasesUrl = "https://github.com/HuanXinWork/Cu-Hotbar/releases";
         private const int UpdateNoticeSlot = 0;
@@ -30,8 +29,33 @@ namespace CasualtiesUnknown.Hotbar
         private GUIStyle _noticeStyle;
         private readonly GUIContent _noticeContent = new GUIContent();
 
+        internal static void NotifySettingChanged(UpdateChecker instance, bool on)
+        {
+            Enabled = on;
+            if (instance == null) return;
+            if (!on)
+            {
+                instance.enabled = false;
+                return;
+            }
+            if (!_checked)
+            {
+                instance.enabled = true;
+                instance.TryStartCheck();
+            }
+            else if (_updateAvailable)
+            {
+                instance.enabled = true;
+            }
+        }
+
         private void Start()
         {
+            if (!Enabled)
+            {
+                enabled = false;
+                return;
+            }
             TryStartCheck();
         }
 
@@ -44,15 +68,19 @@ namespace CasualtiesUnknown.Hotbar
         {
             if (_checked || !Enabled) return;
             _checked = true;
-            try
+            _currentVersion = Plugin.PluginVersion;
+            if (string.IsNullOrEmpty(_currentVersion))
             {
-                if (Chainloader.PluginInfos.TryGetValue(PluginGuid, out var info))
-                    _currentVersion = info.Metadata.Version.ToString();
-            }
-            catch (Exception ex)
-            {
-                ModLog.Warning("Update", "初始化版本检查失败：" + ex.Message);
-                return;
+                try
+                {
+                    if (Chainloader.PluginInfos.TryGetValue(Plugin.PluginGuid, out var info))
+                        _currentVersion = info.Metadata.Version.ToString();
+                }
+                catch (Exception ex)
+                {
+                    ModLog.Warning("Update", "初始化版本检查失败：" + ex.Message);
+                    return;
+                }
             }
             ModLog.Debug("Update", $"发起版本检查：当前版本={_currentVersion}");
             StartCoroutine(CheckForUpdates());
@@ -103,6 +131,9 @@ namespace CasualtiesUnknown.Hotbar
             {
                 if (_activeRequest == www)
                     DisposeActiveRequest(abort: false);
+                // 无可用更新时直接休眠组件，消除后续整局每帧 OnGUI 空跑开销
+                if (!_updateAvailable)
+                    enabled = false;
             }
         }
 
@@ -141,9 +172,17 @@ namespace CasualtiesUnknown.Hotbar
 
         private void OnGUI()
         {
-            if (!Enabled) return;
+            if (!Enabled)
+            {
+                enabled = false;
+                return;
+            }
             if (!_checked) TryStartCheck();
-            if (!_updateAvailable) return;
+            if (!_updateAvailable)
+            {
+                if (_activeRequest == null) enabled = false;
+                return;
+            }
             if (SceneManager.GetActiveScene().name != MainMenuScene) return;
 
             if (_noticeStyle == null)

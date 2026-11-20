@@ -2,6 +2,26 @@
 
 > 中文更新日志：见 [changes.md](changes.md)
 
+## v1.1.0
+
+### Added
+
+- **Quick unbind & clear all**: right-click any hotbar slot in-game to clear its item binding directly, or click "Clear all slots" at the bottom of Settings → Switch keys.
+- **Automated tag release workflow**: upgraded GitHub Actions to native Node 24 actions; pushing a `v*` / `V*` tag now builds the Release binary and publishes packaged assets to GitHub Releases automatically.
+
+### Fixed
+
+- Fixed slot switch keys, the use key, and the settings hotkey failing to trigger while holding movement keys (`WASD`, `Space`) or other non-modifier keys; shortcut matching now checks only `Shift` / `Ctrl` / `Alt` modifier groups.
+- Hid the hotbar during pause menus (including fade-out transitions), vanilla settings, death screens, world generation, and cutscenes, and lowered the hotbar Canvas sorting order below dragged item icons and full-screen overlays.
+- Preserved item bindings in higher slots when reducing the slot count so they restore automatically when increased again, and prevented body respawns within the same run from clearing bindings when `AutoRefill` is disabled.
+- Added input and item-use gating for `PlayerCamera.blockItemUsage` and `LiquidTransfer`; added a scan cooldown when a held firearm needs ammo while no matching ammo exists in inventory, plus safe fallback for `gasTime` field lookup.
+- Fixed the first scroll-wheel step skipping slot 1, made plain left-click cancel hotkey capture instead of binding primary attack, expanded the Offset Y slider range to `-540..540`, and switched binding saves to atomic temp-file writes.
+
+### Changed
+
+- **Settings & About layout overhaul**: resized the standalone settings window to `980x740` centered on first open and adjusted the pause-menu launcher button position; added bordered section cards, visible slider tracks with live value boxes, split key settings into "Switch keys" and "Behavior & Assist" (6 sections total) with right-aligned controls, and arranged the About tab into a single-screen two-column link layout.
+- **In-game hotbar visuals & runtime polish**: added an inset `3px` selection frame, dark status-bar backplates, centered item icons, and 4-way black pixel outlines on key and stack badges; switched hotkey labels to event-driven dirty updates, cached per-frame locale resolution, and disabled `UpdateChecker.OnGUI` once version check finishes with no update.
+
 ## v1.0.9
 
 ### Fixed

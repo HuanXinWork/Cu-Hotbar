@@ -114,7 +114,7 @@ namespace CasualtiesUnknown.Hotbar
 #if DEBUG
             string formatted = $"[DBG][{scope}] {message}";
             // BepInEx 默认屏蔽 LogDebug 级别，走 LogInfo 确保写入 LogOutput.log
-            _sink?.LogInfo(Prefix + formatted);
+            _sink?.LogInfo(formatted);
             WriteToConsole(formatted, "#9E9E9E");
             WriteDebugFile("DBG", scope, message);
 #endif

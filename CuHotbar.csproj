@@ -6,8 +6,8 @@
     <RootNamespace>CasualtiesUnknown.Hotbar</RootNamespace>
     <LangVersion>9</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.0.9</Version>
-    <Description>Casualties Unknown — 快捷物品栏 mod</Description>
+    <Version>1.1.0</Version>
+    <Description>Casualties Unknown 快捷物品栏模组</Description>
 
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <DebugType>portable</DebugType>
