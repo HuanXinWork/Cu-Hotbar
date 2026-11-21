@@ -2,6 +2,19 @@
 
 > 中文更新日志：见 [changes.md](changes.md)
 
+## v1.1.3
+
+### Fixed
+
+- Fixed right-dragging an item out of the hotbar (such as dragging medical supplies onto the health panel) mistakenly clearing the slot binding on release, returning plain right-click completely to vanilla item dragging.
+- Fixed pressing a slot's key while an open container UI is active and the cursor hovers over an item of the same bound ID getting swallowed by re-binding; hovering an item with the same `id` now prioritizes that instance and continues into the normal hold or quick-use flow.
+- Fixed slot hotkeys failing to pull items from nested bags inside bags or from currently open, reachable external containers (dropped bags, medkits, and scene crates): body inventory scanning now uses breadth-first traversal, external container pickup and return also support fixture crates without an `Item` component, and closing an external container no longer misclears bindings when `AutoRefill` is disabled.
+- Fixed pulling an item out of a non-empty bag held in the main hand dropping that parent bag onto the ground when all other body slots are full; it now swaps and stashes the parent bag before taking the target item, and refreshes any open container UI immediately after moving items.
+
+### Changed
+
+- **Slot unbind gesture & container click-to-open**: in-game quick unbind now uses plain middle-click or `Alt+Right-click` instead of plain right-click, and a short stationary right-click on a container item in the same hotbar slot passes through to vanilla to open its container panel. Existing `SafeQuickUse` behavior (moving only the selection frame and consuming directly from bags) remains unchanged.
+
 ## v1.1.2
 
 ### Added

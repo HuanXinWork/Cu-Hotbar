@@ -135,6 +135,20 @@ namespace CasualtiesUnknown.Hotbar
                 || Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
         }
 
+        internal static bool IsAltOnlyHeld()
+        {
+            return (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))
+                && !Input.GetKey(KeyCode.LeftShift) && !Input.GetKey(KeyCode.RightShift)
+                && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl);
+        }
+
+        // 原版 iteminteract 默认占用无修饰右键拖拽，解绑改用无修饰中键或 Alt+右键以避免拖出物品时误清槽位
+        internal static bool IsUnbindGestureThisFrame()
+        {
+            return (Input.GetMouseButtonDown(2) && !IsAnyModifierHeld())
+                || (Input.GetMouseButtonDown(1) && IsAltOnlyHeld());
+        }
+
         private static bool IsShiftKey(KeyCode key) => key == KeyCode.LeftShift || key == KeyCode.RightShift;
         private static bool IsCtrlKey(KeyCode key) => key == KeyCode.LeftControl || key == KeyCode.RightControl;
         private static bool IsAltKey(KeyCode key) => key == KeyCode.LeftAlt || key == KeyCode.RightAlt;

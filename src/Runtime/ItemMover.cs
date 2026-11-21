@@ -1,3 +1,6 @@
+using System;
+using UnityEngine;
+
 namespace CasualtiesUnknown.Hotbar
 {
     /// <summary>无状态物品搬移辅助：探测原位、归还原位、腾空主手与切入主手。</summary>
@@ -40,7 +43,7 @@ namespace CasualtiesUnknown.Hotbar
             return -1;
         }
 
-        /// <summary>记录物品当前所属的非主手身体槽或随身容器。</summary>
+        /// <summary>记录物品当前所属的非主手身体槽或父容器。</summary>
         internal static Origin Probe(Body body, Item item)
         {
             var o = Origin.None;
@@ -71,7 +74,7 @@ namespace CasualtiesUnknown.Hotbar
                 }
             }
 
-            if (TryStoreIntoContainer(body, origin.Cont, item))
+            if (TryStoreIntoContainer(body, origin.Cont, item, allowOpenExternal: true))
             {
                 ModLog.Flow("Move", "归还", $"{HotbarRuntime.DescribeItem(item)} -> 原容器 {origin.Cont.name}");
                 return true;
@@ -137,7 +140,62 @@ namespace CasualtiesUnknown.Hotbar
             }
         }
 
-        /// <summary>将可手持的随身物品切入主手（要求主手已腾空且具备抓握能力）。</summary>
+        /// <summary>腾空主手并将 target 切入主手；当主手提着母袋子且全身满槽时智能换槽收纳避免把袋子丢地。</summary>
+        internal static bool StashAndGrab(Body body, Item handItem, Item target)
+        {
+            if (body == null || target == null) return false;
+            if (!CanBeHeld(body, target) || !CanHoldInHand(body)) return false;
+            if (handItem == null || handItem == target) return GrabToHand(body, target);
+
+            int hand = body.handSlot;
+            if (body.GetItem(hand) != handItem) return GrabToHand(body, target);
+
+            int empty = FindEmptySlotFor(body, handItem, hand);
+            if (empty >= 0)
+            {
+                body.SwapSlots(hand, empty);
+                if (body.GetItem(empty) == handItem)
+                {
+                    ModLog.Flow("Move", "腾空主手", $"{HotbarRuntime.DescribeItem(handItem)} -> 身体槽 #{empty}");
+                    return GrabToHand(body, target);
+                }
+            }
+
+            var cont = FindStorableContainer(body, handItem);
+            if (TryStoreIntoContainer(body, cont, handItem))
+            {
+                ModLog.Flow("Move", "腾空主手", $"{HotbarRuntime.DescribeItem(handItem)} -> 容器 {cont.name}");
+                return GrabToHand(body, target);
+            }
+
+            handItem.TryGetComponent<Container>(out var handCont);
+            if (TrySwapOccupantIntoOtherContainer(body, hand, handItem, handCont, target, out bool grabbed4a))
+                return grabbed4a;
+
+            if (handCont != null
+                && IsInContainerHierarchy(handCont, target)
+                && TrySwapHandContainerWithOccupant(body, hand, handItem, handCont, target, out bool grabbed4b))
+            {
+                return grabbed4b;
+            }
+
+            int targetSlot = BodySlotOf(body, target);
+            if (targetSlot >= 0 && targetSlot != hand && CanSlotAccept(body, handItem, targetSlot, hand))
+            {
+                body.SwapSlots(hand, targetSlot);
+                if (body.GetItem(hand) == target)
+                {
+                    ModLog.Flow("Move", "满槽对调",
+                        $"{HotbarRuntime.DescribeItem(handItem)} <-> {HotbarRuntime.DescribeItem(target)}（槽 #{targetSlot}）");
+                    return true;
+                }
+            }
+
+            Stash(body, handItem);
+            return GrabToHand(body, target);
+        }
+
+        /// <summary>将可手持的物品切入主手（要求主手已腾空且具备抓握能力）。</summary>
         internal static bool GrabToHand(Body body, Item item)
         {
             if (!CanBeHeld(body, item))
@@ -160,15 +218,146 @@ namespace CasualtiesUnknown.Hotbar
                 return body.GetItem(hand) == item;
             }
 
+            bool hadParentContainer = item.TryGetParentContainer(out _);
             // PickUpItem 内部在校验通过后会自动从父容器 UnloadItem，不可提前卸出以免失败时掉地
             body.PickUpItem(item, hand, force: true);
-            return body.GetItem(hand) == item;
+            bool grabbed = body.GetItem(hand) == item;
+            if (grabbed && hadParentContainer)
+                RefreshContainerUiIfOpen();
+            return grabbed;
         }
 
-        private static bool CanMoveToBodySlot(Body body, Item item, int slotIndex, int excludeSlot)
+        private static bool TrySwapOccupantIntoOtherContainer(
+            Body body, int hand, Item handItem, Container handCont, Item target, out bool grabbed)
         {
+            grabbed = false;
+            if (body.slots == null) return false;
+            for (int s = 0; s < body.slots.Length; s++)
+            {
+                if (!CanSlotAccept(body, handItem, s, hand)) continue;
+                Item occupant = body.GetItem(s);
+                if (occupant == null || occupant == target) continue;
+                if (!CanSlotAccept(body, occupant, hand, s)) continue;
+
+                var occCont = FindStorableContainer(body, occupant, handCont);
+                if (occCont == null) continue;
+
+                body.SwapSlots(hand, s);
+                if (body.GetItem(s) == handItem && TryStoreIntoContainer(body, occCont, occupant))
+                {
+                    ModLog.Flow("Move", "换槽收纳",
+                        $"{HotbarRuntime.DescribeItem(handItem)} -> 槽 #{s}，原槽 {HotbarRuntime.DescribeItem(occupant)} -> 容器 {occCont.name}");
+                    grabbed = GrabToHand(body, target);
+                    return true;
+                }
+                if (body.GetItem(hand) == occupant && body.GetItem(s) == handItem)
+                    body.SwapSlots(hand, s);
+            }
+            return false;
+        }
+
+        private static bool TrySwapHandContainerWithOccupant(
+            Body body, int hand, Item handItem, Container handCont, Item target, out bool grabbed)
+        {
+            grabbed = false;
+            if (body.slots == null) return false;
+            for (int s = 0; s < body.slots.Length; s++)
+            {
+                if (!CanSlotAccept(body, handItem, s, hand)) continue;
+                Item occupant = body.GetItem(s);
+                if (occupant == null || occupant == target) continue;
+                if (!CanSlotAccept(body, occupant, hand, s)) continue;
+                if (!CanHoldAfterRemovingTarget(handCont, handItem, occupant, target)) continue;
+
+                body.SwapSlots(hand, s);
+                if (body.GetItem(s) != handItem) continue;
+
+                if (handCont.CanHoldItem(occupant) && TryStoreIntoContainer(body, handCont, occupant))
+                {
+                    ModLog.Flow("Move", "换槽收纳",
+                        $"手提容器 {HotbarRuntime.DescribeItem(handItem)} -> 槽 #{s}，原槽 {HotbarRuntime.DescribeItem(occupant)} 已收入该容器");
+                    grabbed = GrabToHand(body, target);
+                    return true;
+                }
+
+                // 须先取出 target 腾出袋内承重余量后再装入 occupant
+                body.DropItem(occupant);
+                occupant.transform.position = handCont.transform.position;
+                grabbed = GrabToHand(body, target);
+                occupant.transform.position = handCont.transform.position;
+                handCont.LoadItem(occupant);
+                RefreshContainerUiIfOpen();
+                if (occupant.transform.parent != handCont.transform)
+                {
+                    ModLog.Flow("Move", "换槽掉落", $"{HotbarRuntime.DescribeItem(occupant)} 未能装入容器 {handCont.name}，已掉地");
+                    WarnDropped(occupant);
+                }
+                else
+                {
+                    ModLog.Flow("Move", "换槽收纳",
+                        $"手提容器 {HotbarRuntime.DescribeItem(handItem)} -> 槽 #{s}，取出目标后已装入 {HotbarRuntime.DescribeItem(occupant)}");
+                }
+                return true;
+            }
+            return false;
+        }
+
+        private static bool IsInContainerHierarchy(Container rootCont, Item target)
+        {
+            if (rootCont == null || target == null) return false;
+            var rootTf = rootCont.transform;
+            for (var tf = target.transform.parent; tf != null; tf = tf.parent)
+            {
+                if (tf == rootTf) return true;
+                if (!tf.TryGetComponent<Container>(out _)) return false;
+            }
+            return false;
+        }
+
+        private static bool CanHoldAfterRemovingTarget(Container handCont, Item handItem, Item occupant, Item target)
+        {
+            if (handCont == null || handItem == null || occupant == null || target == null || occupant == handItem)
+                return false;
+            if (handItem.TryGetParentContainer(out _)) return false;
+            if (occupant.TryGetComponent<Container>(out var subCont) && subCont.GetHoldingWeight() > 0f)
+                return false;
+            if (occupant.totalWeight > handCont.maxWeightPerItem)
+                return false;
+
+            // Container.GetHoldingWeight 仅累加直接子物体重量；target 若在嵌套子袋内则取出不减轻顶层袋重
+            float freedWeight = target.transform.parent == handCont.transform ? target.totalWeight : 0f;
+            if (handCont.GetHoldingWeight() - freedWeight + occupant.totalWeight > handCont.maxWeight)
+                return false;
+
+            if (handCont.tagRestriction != null && handCont.tagRestriction.Length > 0)
+            {
+                var itemTags = occupant.Stats != null ? occupant.Stats.GetTags() : null;
+                if (!HasAnyMatchingTag(handCont.tagRestriction, itemTags))
+                    return false;
+            }
+            return true;
+        }
+
+        private static bool HasAnyMatchingTag(string[] restrictions, string[] itemTags)
+        {
+            if (itemTags == null || itemTags.Length == 0) return false;
+            for (int i = 0; i < restrictions.Length; i++)
+            {
+                string req = restrictions[i];
+                for (int j = 0; j < itemTags.Length; j++)
+                {
+                    if (string.Equals(req, itemTags[j], StringComparison.Ordinal))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool CanSlotAccept(Body body, Item item, int slotIndex, int excludeSlot)
+        {
+            if (body == null || body.slots == null) return false;
             if (slotIndex < 0 || slotIndex >= body.slots.Length || slotIndex == excludeSlot) return false;
-            if (slotIndex == MouthSlotIndex || body.HoldingItem(slotIndex)) return false;
+            if (slotIndex == MouthSlotIndex) return false;
             if (!CanBeHeld(body, item)) return false;
             var slot = body.slots[slotIndex];
             if (slot == null || !slot.canPickUp) return false;
@@ -177,8 +366,14 @@ namespace CasualtiesUnknown.Hotbar
             return true;
         }
 
+        private static bool CanMoveToBodySlot(Body body, Item item, int slotIndex, int excludeSlot)
+        {
+            return CanSlotAccept(body, item, slotIndex, excludeSlot) && !body.HoldingItem(slotIndex);
+        }
+
         private static int FindEmptySlotFor(Body body, Item item, int excludeSlot)
         {
+            if (body == null || body.slots == null) return -1;
             for (int i = 0; i < body.slots.Length; i++)
             {
                 if (CanMoveToBodySlot(body, item, i, excludeSlot)) return i;
@@ -186,36 +381,104 @@ namespace CasualtiesUnknown.Hotbar
             return -1;
         }
 
-        private static bool CanStoreInCarriedContainer(Body body, Container cont, Item item)
+        // 常规收纳禁止塞入外部容器；仅 Restore 归还原父容器时允许放回正打开且距离 < 5m 的外部容器
+        private static bool CanStoreInContainer(Body body, Container cont, Item item, bool allowOpenExternal)
         {
-            if (cont == null || item == null) return false;
+            if (body == null || cont == null || item == null) return false;
             var contItem = cont.GetComponent<Item>();
-            if (contItem == null || contItem == item) return false;
-            // 仅允许放入随身容器且禁止非空容器嵌套，对齐 Container.LoadItem 约束防止 DropItem 后装入被拒
-            if (!body.HoldingItem(contItem) && !body.HasWearable(contItem)) return false;
-            if (contItem.TryGetParentContainer(out _)) return false;
+            if (contItem == item) return false;
+
+            bool carried = contItem != null && (body.HoldingItem(contItem) || body.HasWearable(contItem));
+            if (!carried)
+            {
+                if (!allowOpenExternal) return false;
+                if (!HotbarModel.TryGetOpenExternalContainer(body, null, out var openExt) || openExt != cont)
+                    return false;
+                if (Vector2.Distance(body.transform.position, cont.transform.position) >= 5f)
+                    return false;
+            }
+
+            if (contItem != null && contItem.TryGetParentContainer(out _)) return false;
             if (item.TryGetComponent<Container>(out var subCont) && subCont.GetHoldingWeight() > 0f) return false;
             return cont.CanHoldItem(item);
         }
 
-        private static bool TryStoreIntoContainer(Body body, Container cont, Item item)
+        private static bool TryStoreIntoContainer(Body body, Container cont, Item item, bool allowOpenExternal = false)
         {
-            if (!CanStoreInCarriedContainer(body, cont, item)) return false;
+            if (!CanStoreInContainer(body, cont, item, allowOpenExternal)) return false;
             if (body.HoldingItem(item)) body.DropItem(item);
             item.transform.position = cont.transform.position;
-            cont.LoadItem(item);
-            return item.transform.parent == cont.transform;
+            if (cont.TryGetComponent<Item>(out _))
+                cont.LoadItem(item);
+            else
+                LoadIntoFixtureContainer(cont, item);
+            if (item.transform.parent != cont.transform) return false;
+            RefreshContainerUiIfOpen();
+            return true;
         }
 
-        private static Container FindStorableContainer(Body body, Item item)
+        // 原版 Container.LoadItem 未判空 mItem，无 Item 组件的场景固定箱体须按同逻辑直接入箱以防 NRE
+        private static void LoadIntoFixtureContainer(Container cont, Item item)
         {
-            foreach (var it in body.GetAllItemsThorough())
+            item.transform.SetParent(cont.transform);
+            if (item.rb != null) item.rb.simulated = false;
+            item.transform.position = cont.transform.position;
+            if (item.TryGetComponent<SpriteRenderer>(out var itemSr))
             {
-                if (it == null || it == item) continue;
-                if (it.TryGetComponent<Container>(out var cont) && CanStoreInCarriedContainer(body, cont, item))
-                    return cont;
+                itemSr.enabled = cont.itemsVisible;
+                if (cont.itemsVisible && cont.TryGetComponent<SpriteRenderer>(out var contSr))
+                {
+                    itemSr.sortingOrder = contSr.sortingOrder;
+                    item.transform.localEulerAngles = new Vector3(0f, 0f, 180f);
+                }
+            }
+            if (item.TryGetComponent<Wearable>(out var wear))
+                wear.ClearSprites();
+            Container.UpdateItemLight(item.gameObject, !cont.itemsVisible);
+        }
+
+        private static Container FindStorableContainer(Body body, Item item, Container exclude = null)
+        {
+            if (body == null || item == null) return null;
+            if (body.slots != null)
+            {
+                for (int i = 0; i < body.slots.Length; i++)
+                {
+                    var slotItem = body.GetItem(i);
+                    if (slotItem == null || slotItem == item) continue;
+                    if (slotItem.TryGetComponent<Container>(out var cont)
+                        && cont != exclude
+                        && CanStoreInContainer(body, cont, item, allowOpenExternal: false))
+                    {
+                        return cont;
+                    }
+                }
+            }
+            var wearables = body.GetAllWearables();
+            if (wearables != null)
+            {
+                for (int i = 0; i < wearables.Count; i++)
+                {
+                    var wear = wearables[i];
+                    if (wear == null || wear == item) continue;
+                    if (wear.TryGetComponent<Container>(out var cont)
+                        && cont != exclude
+                        && CanStoreInContainer(body, cont, item, allowOpenExternal: false))
+                    {
+                        return cont;
+                    }
+                }
             }
             return null;
+        }
+
+        private static void RefreshContainerUiIfOpen()
+        {
+            var cam = PlayerCamera.main;
+            if (cam != null && cam.containerMenu != null && cam.containerMenu.activeSelf)
+            {
+                cam.RepopulateContainer();
+            }
         }
 
         private static void WarnDropped(Item item)

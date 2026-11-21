@@ -7,16 +7,26 @@ namespace CasualtiesUnknown.Hotbar
     [HarmonyPatch(typeof(PlayerCamera))]
     internal static class DragPatch
     {
+        private static int _dragStartSlot = -1;
+
         [HarmonyPatch("HandleStartDragging")]
         [HarmonyPrefix]
         private static bool StartPrefix(PlayerCamera __instance)
         {
-            if (!HotbarRuntime.Ready || __instance != PlayerCamera.main) return true;
+            if (__instance != PlayerCamera.main) return true;
+            _dragStartSlot = -1;
+            if (!HotbarRuntime.Ready) return true;
             if (UiBlocker.IsBlocking || SaveManagerTabBridge.IsHostInputBlocked()) return false;
             if (!HotbarRuntime.View.TryGetSlotIndexAt(Input.mousePosition, out int index)) return true;
             if (PauseMenuCompat.IsGameplayInputBlocked()) return false;
 
             if (__instance.body == null || !__instance.body.conscious) return false;
+            // Alt+右键用于解绑槽位，此处拦截起拖以防与解绑手势冲突
+            if (HotbarConfig.IsAltOnlyHeld())
+            {
+                __instance.dragItem = null;
+                return false;
+            }
             __instance.dragItem = null;
             __instance.clickPos = Input.mousePosition;
             if (!__instance.body.allowUseItem)
@@ -29,6 +39,7 @@ namespace CasualtiesUnknown.Hotbar
             var item = HotbarRuntime.Model.GetItem(index);
             if (item != null)
             {
+                _dragStartSlot = index;
                 ModLog.Flow("UI", "拖拽起点", $"从槽位 #{index + 1}（索引 {index}）拿起 {HotbarRuntime.DescribeItem(item)}");
                 BeginDragFromSlot(__instance, item);
             }
@@ -60,7 +71,10 @@ namespace CasualtiesUnknown.Hotbar
         [HarmonyPriority(Priority.Low)]
         private static bool ReleasePrefix(PlayerCamera __instance)
         {
-            if (!HotbarRuntime.Ready || __instance != PlayerCamera.main) return true;
+            if (__instance != PlayerCamera.main) return true;
+            int startSlot = _dragStartSlot;
+            _dragStartSlot = -1;
+            if (!HotbarRuntime.Ready) return true;
             if (UiBlocker.IsBlocking || SaveManagerTabBridge.IsHostInputBlocked())
             {
                 __instance.dragItem = null;
@@ -73,6 +87,14 @@ namespace CasualtiesUnknown.Hotbar
 
             if (HotbarRuntime.View.TryGetSlotIndexAt(Input.mousePosition, out int index))
             {
+                // 从同一槽位原地短按释放容器物品时交还原版打开容器面板，避免被重绑拦截吞掉打开动作
+                if (index == startSlot
+                    && Vector2.Distance(Input.mousePosition, __instance.clickPos) < 10f
+                    && item.TryGetComponent<Container>(out _))
+                {
+                    return true;
+                }
+
                 HotbarRuntime.Model.Link(index, item);
                 ModLog.DebugThrottled("slot", "UI",
                     $"拖拽绑定：{HotbarRuntime.DescribeItem(item)} -> 槽位 #{index + 1}（索引 {index}）");

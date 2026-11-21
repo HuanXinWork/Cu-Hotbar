@@ -14,11 +14,14 @@ namespace CasualtiesUnknown.Hotbar
         private readonly List<Item> _bodyItems = new List<Item>();
         private readonly HashSet<Item> _bodyItemSet = new HashSet<Item>();
         private readonly Dictionary<string, int> _bodyIdCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly Queue<Transform> _scanQueue = new Queue<Transform>();
+        private readonly Queue<Transform> _extQueue = new Queue<Transform>();
         private int _snapshotFrame = -1;
         private Body _snapshotBody;
 
         private readonly Item[] _items = new Item[HotbarConfig.MaxSlots];
         private readonly string[] _ids = new string[HotbarConfig.MaxSlots];
+        private readonly bool[] _trackedFromBody = new bool[HotbarConfig.MaxSlots];
         private int _slotCount;
         private int _runId;
         private Body _trackedBody;
@@ -41,7 +44,7 @@ namespace CasualtiesUnknown.Hotbar
 
         internal int SlotCount => _slotCount;
 
-        /// <summary>解析第 index 槽随身物品；已跟踪实例销毁或离身时按 AutoRefill 重绑同种或清除。</summary>
+        /// <summary>解析第 index 槽可用物品；随身实例耗尽或离身时按 AutoRefill 重绑同种或清除。</summary>
         internal Item GetItem(int index)
         {
             if (index < 0 || index >= _slotCount) return null;
@@ -50,11 +53,25 @@ namespace CasualtiesUnknown.Hotbar
             var cur = _items[index];
 
             // 用 ReferenceEquals 区分尚未解析的真 null 与曾绑定但已 Destroy 的 Unity fake-null
-            if (!ReferenceEquals(cur, null) && body != null && (cur == null || !InBody(body, cur)))
+            if (!ReferenceEquals(cur, null) && body != null)
             {
+                if (cur != null && InBody(body, cur))
+                {
+                    _trackedFromBody[index] = true;
+                    return cur;
+                }
+                if (cur != null && IsInOpenExternalContainer(body, cur))
+                {
+                    _trackedFromBody[index] = false;
+                    return cur;
+                }
+
+                bool wasFromBody = _trackedFromBody[index];
                 cur = null;
                 _items[index] = null;
-                if (!_cfg.AutoRefill.Value)
+                _trackedFromBody[index] = false;
+                // 仅当随身跟踪的实例耗尽或离身时才在 AutoRefill=false 下清槽，避免关闭外部容器界面误清绑定
+                if (wasFromBody && !_cfg.AutoRefill.Value)
                 {
                     ModLog.Debug("Slot", $"槽位 #{index + 1}（索引 {index}）物品耗尽或离身且 AutoRefill 关闭，已清除绑定");
                     _ids[index] = "";
@@ -70,7 +87,15 @@ namespace CasualtiesUnknown.Hotbar
                 if (found != null)
                 {
                     _items[index] = found;
-                    cur = found;
+                    _trackedFromBody[index] = true;
+                    return found;
+                }
+                var extFound = FindInOpenExternalContainer(body, _ids[index], requireHoldable: false);
+                if (extFound != null)
+                {
+                    _items[index] = extFound;
+                    _trackedFromBody[index] = false;
+                    return extFound;
                 }
             }
             return cur;
@@ -100,11 +125,24 @@ namespace CasualtiesUnknown.Hotbar
             string newId = item != null ? (item.id ?? "") : "";
             var body = CurrentBody();
             SyncTrackedBody(body);
-            Item newTracked = item != null && body != null && InBody(body, item) && ItemMover.CanBeHeld(body, item)
-                ? item
-                : null;
 
-            if (_ids[index] == newId && _items[index] == newTracked) return;
+            Item newTracked = null;
+            bool fromBody = false;
+            if (item != null && body != null && ItemMover.CanBeHeld(body, item))
+            {
+                if (InBody(body, item))
+                {
+                    newTracked = item;
+                    fromBody = true;
+                }
+                else if (IsInOpenExternalContainer(body, item))
+                {
+                    newTracked = item;
+                    fromBody = false;
+                }
+            }
+
+            if (_ids[index] == newId && _items[index] == newTracked && _trackedFromBody[index] == fromBody) return;
 
             if (item != null)
             {
@@ -115,6 +153,7 @@ namespace CasualtiesUnknown.Hotbar
                     {
                         _items[i] = null;
                         _ids[i] = "";
+                        _trackedFromBody[i] = false;
                         if (_activeIndex == i) ClearActive();
                     }
                 }
@@ -123,11 +162,34 @@ namespace CasualtiesUnknown.Hotbar
             if (_activeIndex == index && _activeItem != newTracked)
                 ClearActive();
 
-            // 指向地面物品或正穿戴在身上的物品时仅记录 ID，待存在可手持实例时再绑定引用
+            // 指向地面散落物品或正穿戴在身上的物品时仅记录 ID，待存在可手持实例时再绑定引用
             _items[index] = newTracked;
             _ids[index] = newId;
+            _trackedFromBody[index] = fromBody;
             ModLog.Flow("Slot", "绑定更新", $"槽位 #{index + 1} -> id='{newId}' 实例就绪={newTracked != null}");
             SaveForCurrentRun();
+        }
+
+        /// <summary>当鼠标悬停在同种已绑定物品上时，优先将该具体实例设为当前槽位目标。</summary>
+        internal void PreferHoveredInstance(int index, Item hover)
+        {
+            if (index < 0 || index >= _slotCount || hover == null) return;
+            var body = CurrentBody();
+            if (body == null) return;
+            SyncTrackedBody(body);
+            if (string.IsNullOrEmpty(hover.id) || _ids[index] != hover.id || !ItemMover.CanBeHeld(body, hover))
+                return;
+
+            if (InBody(body, hover))
+            {
+                _items[index] = hover;
+                _trackedFromBody[index] = true;
+            }
+            else if (IsInOpenExternalContainer(body, hover))
+            {
+                _items[index] = hover;
+                _trackedFromBody[index] = false;
+            }
         }
 
         internal void Clear(int index)
@@ -135,6 +197,7 @@ namespace CasualtiesUnknown.Hotbar
             if (index < 0 || index >= _slotCount) return;
             _items[index] = null;
             _ids[index] = "";
+            _trackedFromBody[index] = false;
             if (_activeIndex == index) ClearActive();
             ModLog.Debug("Slot", $"已清空槽位 #{index + 1}（索引 {index}）");
             SaveForCurrentRun();
@@ -146,6 +209,7 @@ namespace CasualtiesUnknown.Hotbar
             {
                 _items[i] = null;
                 _ids[i] = "";
+                _trackedFromBody[i] = false;
             }
             ClearActive();
             ModLog.Flow("Slot", "清空全部槽位", $"runId={_runId} 当前槽数={_slotCount}");
@@ -239,17 +303,22 @@ namespace CasualtiesUnknown.Hotbar
             {
                 RestorePrevious(body);
 
+                var targetOrigin = ItemMover.Probe(body, target);
                 Item handItem = body.GetItem(body.handSlot);
-                if (handItem != null && handItem != target) ItemMover.Stash(body, handItem);
-
-                _activeOrigin = ItemMover.Probe(body, target);
-                if (!ItemMover.GrabToHand(body, target))
+                bool ok = handItem != null && handItem != target
+                    ? ItemMover.StashAndGrab(body, handItem, target)
+                    : ItemMover.GrabToHand(body, target);
+                if (!ok)
                 {
                     ClearActive();
                     return false;
                 }
+
+                _activeOrigin = targetOrigin;
                 _activeIndex = index;
                 _activeItem = target;
+                _items[index] = target;
+                _trackedFromBody[index] = true;
                 return true;
             }
             finally
@@ -324,15 +393,16 @@ namespace CasualtiesUnknown.Hotbar
                 bool inGesture = MultiplayerCompat.BeginMoveGesture();
                 try
                 {
-                    Item residualHand = body.GetItem(body.handSlot);
-                    if (residualHand != null && residualHand != same)
-                        ItemMover.Stash(body, residualHand);
-
                     var origin = ItemMover.Probe(body, same);
-                    if (ItemMover.GrabToHand(body, same))
+                    Item residualHand = body.GetItem(body.handSlot);
+                    bool grabbed = residualHand != null && residualHand != same
+                        ? ItemMover.StashAndGrab(body, residualHand, same)
+                        : ItemMover.GrabToHand(body, same);
+                    if (grabbed)
                     {
                         _activeOrigin = origin;
                         _items[_activeIndex] = same;
+                        _trackedFromBody[_activeIndex] = true;
                         _activeItem = same;
                         ModLog.Flow("Slot", "自动补货", $"槽位 #{_activeIndex + 1} 已补充同种物品={HotbarRuntime.DescribeItem(same)}");
                         return;
@@ -360,11 +430,17 @@ namespace CasualtiesUnknown.Hotbar
                 if (!ItemMover.Restore(body, prev, _activeOrigin))
                 {
                     _items[_activeIndex] = null;
+                    _trackedFromBody[_activeIndex] = false;
                     if (!_cfg.AutoRefill.Value)
                     {
                         ModLog.Debug("Slot", $"还原槽位 #{_activeIndex + 1} 失败且 AutoRefill 关闭，已清除绑定");
                         Clear(_activeIndex);
                     }
+                }
+                else
+                {
+                    InvalidateSnapshot();
+                    _trackedFromBody[_activeIndex] = InBody(body, prev);
                 }
             }
             ClearActive();
@@ -398,6 +474,7 @@ namespace CasualtiesUnknown.Hotbar
             return _bodyItemSet.Contains(item);
         }
 
+        // 替换仅扫一层的 Body.GetAllItemsThorough，通过 BFS + HashSet 防环完整覆盖多层嵌套容器
         private void EnsureBodySnapshot(Body body)
         {
             int frame = Time.frameCount;
@@ -408,20 +485,150 @@ namespace CasualtiesUnknown.Hotbar
             _bodyItems.Clear();
             _bodyItemSet.Clear();
             _bodyIdCounts.Clear();
+            _scanQueue.Clear();
 
-            var all = body.GetAllItemsThorough();
-            for (int i = 0; i < all.Count; i++)
+            if (body.slots != null)
             {
-                var it = all[i];
-                if (it == null) continue;
-                _bodyItems.Add(it);
-                _bodyItemSet.Add(it);
-                if (!string.IsNullOrEmpty(it.id))
+                for (int i = 0; i < body.slots.Length; i++)
+                    AddCarriedRootAndEnqueue(body.GetItem(i));
+            }
+
+            var wearables = body.GetAllWearables();
+            if (wearables != null)
+            {
+                for (int i = 0; i < wearables.Count; i++)
+                    AddCarriedRootAndEnqueue(wearables[i]);
+            }
+
+            while (_scanQueue.Count > 0)
+            {
+                var contTf = _scanQueue.Dequeue();
+                if (contTf == null) continue;
+                int childCount = contTf.childCount;
+                for (int i = 0; i < childCount; i++)
                 {
-                    _bodyIdCounts.TryGetValue(it.id, out int n);
-                    _bodyIdCounts[it.id] = n + 1;
+                    var child = contTf.GetChild(i);
+                    if (child != null && child.TryGetComponent<Item>(out var sub) && sub != null && _bodyItemSet.Add(sub))
+                    {
+                        RecordSnapshotItem(sub);
+                        if (sub.TryGetComponent<Container>(out _))
+                            _scanQueue.Enqueue(sub.transform);
+                    }
                 }
             }
+        }
+
+        private void AddCarriedRootAndEnqueue(Item root)
+        {
+            if (root == null || !_bodyItemSet.Add(root)) return;
+            RecordSnapshotItem(root);
+            if (root.TryGetComponent<Container>(out _))
+                _scanQueue.Enqueue(root.transform);
+        }
+
+        private void RecordSnapshotItem(Item it)
+        {
+            _bodyItems.Add(it);
+            if (!string.IsNullOrEmpty(it.id))
+            {
+                _bodyIdCounts.TryGetValue(it.id, out int n);
+                _bodyIdCounts[it.id] = n + 1;
+            }
+        }
+
+        /// <summary>获取玩家当前打开且处于合法拾取距离与视线内的非随身外部容器。</summary>
+        internal static bool TryGetOpenExternalContainer(Body body, HashSet<Item> bodySet, out Container extCont)
+        {
+            extCont = null;
+            var cam = PlayerCamera.main;
+            if (body == null || cam == null || cam.containerMenu == null || !cam.containerMenu.activeSelf || cam.currentContainer == null)
+                return false;
+
+            var cont = cam.currentContainer;
+            if (cont.TryGetComponent<Item>(out var contItem))
+            {
+                if ((bodySet == null || !bodySet.Contains(contItem))
+                    && !body.HoldingItem(contItem)
+                    && !body.HasWearable(contItem)
+                    && body.DoPickupCheck(contItem, noAlerts: true))
+                {
+                    extCont = cont;
+                    return true;
+                }
+                return false;
+            }
+
+            if (Vector2.Distance(cont.transform.position, body.transform.position) < 10f
+                && !Physics2D.Linecast(body.transform.position, cont.transform.position, LayerMask.GetMask("Ground")))
+            {
+                extCont = cont;
+                return true;
+            }
+            return false;
+        }
+
+        private Item FindInOpenExternalContainer(Body body, string id, bool requireHoldable)
+        {
+            if (body == null || string.IsNullOrEmpty(id)) return null;
+            EnsureBodySnapshot(body);
+            if (!TryGetOpenExternalContainer(body, _bodyItemSet, out var extCont)) return null;
+
+            _extQueue.Clear();
+            _extQueue.Enqueue(extCont.transform);
+            Item fallback = null;
+            while (_extQueue.Count > 0)
+            {
+                var tf = _extQueue.Dequeue();
+                if (tf == null) continue;
+                int childCount = tf.childCount;
+                for (int i = 0; i < childCount; i++)
+                {
+                    var child = tf.GetChild(i);
+                    if (child == null || !child.TryGetComponent<Item>(out var sub) || sub == null) continue;
+                    if (sub.id == id)
+                    {
+                        if (ItemMover.CanBeHeld(body, sub))
+                        {
+                            _extQueue.Clear();
+                            return sub;
+                        }
+                        if (!requireHoldable && fallback == null)
+                            fallback = sub;
+                    }
+                    if (sub.TryGetComponent<Container>(out _))
+                        _extQueue.Enqueue(sub.transform);
+                }
+            }
+            return fallback;
+        }
+
+        private bool IsInOpenExternalContainer(Body body, Item target)
+        {
+            if (body == null || target == null) return false;
+            EnsureBodySnapshot(body);
+            if (!TryGetOpenExternalContainer(body, _bodyItemSet, out var extCont)) return false;
+
+            _extQueue.Clear();
+            _extQueue.Enqueue(extCont.transform);
+            while (_extQueue.Count > 0)
+            {
+                var tf = _extQueue.Dequeue();
+                if (tf == null) continue;
+                int childCount = tf.childCount;
+                for (int i = 0; i < childCount; i++)
+                {
+                    var child = tf.GetChild(i);
+                    if (child == null || !child.TryGetComponent<Item>(out var sub) || sub == null) continue;
+                    if (sub == target)
+                    {
+                        _extQueue.Clear();
+                        return true;
+                    }
+                    if (sub.TryGetComponent<Container>(out _))
+                        _extQueue.Enqueue(sub.transform);
+                }
+            }
+            return false;
         }
 
         private Item FindCandidateInBody(Body body, string id)
@@ -459,6 +666,7 @@ namespace CasualtiesUnknown.Hotbar
             {
                 _ids[i] = i < ids.Count ? (ids[i] ?? "") : "";
                 _items[i] = null;
+                _trackedFromBody[i] = false;
             }
             ClearActive();
             InvalidateSnapshot();
@@ -470,9 +678,7 @@ namespace CasualtiesUnknown.Hotbar
         {
             int filled = 0;
             for (int i = 0; i < ids.Count; i++)
-            {
                 if (!string.IsNullOrEmpty(ids[i])) filled++;
-            }
             ModLog.Debug("Slot", $"载入 runId={runId}：文件 {ids.Count} 条，非空 {filled} 条，当前槽数 {_slotCount}");
         }
 
@@ -484,50 +690,47 @@ namespace CasualtiesUnknown.Hotbar
             int lastNonEmpty = -1;
             for (int i = HotbarConfig.MaxSlots - 1; i >= 0; i--)
             {
-                if (!string.IsNullOrEmpty(_ids[i]))
-                {
-                    lastNonEmpty = i;
-                    break;
-                }
+                if (!string.IsNullOrEmpty(_ids[i])) { lastNonEmpty = i; break; }
             }
 
             // 保留高槽位历史非空绑定的同时裁掉多余空尾，防止临时缩减槽数再保存时抹除尾部绑定
             int saveLen = Mathf.Max(_slotCount, lastNonEmpty + 1);
             var list = new List<string>(saveLen);
-            for (int i = 0; i < saveLen; i++)
-            {
-                list.Add(_ids[i] ?? "");
-            }
+            for (int i = 0; i < saveLen; i++) list.Add(_ids[i] ?? "");
             _store.Save(_runId, list);
         }
 
-        private Item Resolve(int index, Body body)
-        {
-            if (index < 0 || index >= _slotCount || body == null) return null;
-            var cached = _items[index];
-            if (cached != null)
-            {
-                if (InBody(body, cached)) return cached;
-                _items[index] = null;
-            }
-            if (string.IsNullOrEmpty(_ids[index])) return null;
-            var found = FindCandidateInBody(body, _ids[index]);
-            if (found != null) _items[index] = found;
-            return found;
-        }
+        private Item Resolve(int index, Body body) => ResolveCore(index, body, requireHoldable: false);
 
-        private Item ResolveHoldable(int index, Body body)
+        private Item ResolveHoldable(int index, Body body) => ResolveCore(index, body, requireHoldable: true);
+
+        private Item ResolveCore(int index, Body body, bool requireHoldable)
         {
             if (index < 0 || index >= _slotCount || body == null) return null;
             var cached = _items[index];
-            if (cached != null && InBody(body, cached) && ItemMover.CanBeHeld(body, cached))
-                return cached;
+            if (cached != null && (!requireHoldable || ItemMover.CanBeHeld(body, cached)))
+            {
+                if (InBody(body, cached)) { _trackedFromBody[index] = true; return cached; }
+                if (IsInOpenExternalContainer(body, cached)) { _trackedFromBody[index] = false; return cached; }
+                if (!requireHoldable) { _items[index] = null; _trackedFromBody[index] = false; }
+            }
 
             string id = _ids[index];
             if (string.IsNullOrEmpty(id)) return null;
-            var found = FindHoldableInBody(body, id);
-            if (found != null) _items[index] = found;
-            return found;
+            var found = requireHoldable ? FindHoldableInBody(body, id) : FindCandidateInBody(body, id);
+            if (found != null)
+            {
+                _items[index] = found;
+                _trackedFromBody[index] = true;
+                return found;
+            }
+            var extFound = FindInOpenExternalContainer(body, id, requireHoldable);
+            if (extFound != null)
+            {
+                _items[index] = extFound;
+                _trackedFromBody[index] = false;
+            }
+            return extFound;
         }
 
         private void Resize(int count)
@@ -537,6 +740,7 @@ namespace CasualtiesUnknown.Hotbar
             for (int i = _slotCount; i < HotbarConfig.MaxSlots; i++)
             {
                 _items[i] = null;
+                _trackedFromBody[i] = false;
             }
             if (_activeIndex >= _slotCount) ClearActive();
         }
@@ -548,6 +752,7 @@ namespace CasualtiesUnknown.Hotbar
             for (int i = 0; i < HotbarConfig.MaxSlots; i++)
             {
                 _items[i] = null;
+                _trackedFromBody[i] = false;
             }
             ClearActive();
             _trackedBody = body;

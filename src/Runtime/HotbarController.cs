@@ -49,15 +49,15 @@ namespace CasualtiesUnknown.Hotbar
             }
 
             _model.InvalidateSnapshot();
-            if (HandleRightClickClear()) return;
+            if (HandleSlotUnbindClick()) return;
             HandleKeys();
             HandleUseItem();
             HandleScroll();
         }
 
-        private bool HandleRightClickClear()
+        private bool HandleSlotUnbindClick()
         {
-            if (!Input.GetMouseButtonDown(1) || HotbarConfig.IsAnyModifierHeld()) return false;
+            if (!HotbarConfig.IsUnbindGestureThisFrame()) return false;
             if (!_view.TryGetSlotIndexAt(Input.mousePosition, out int slotIdx)) return false;
 
             if (!string.IsNullOrEmpty(_model.GetId(slotIdx)))
@@ -65,7 +65,7 @@ namespace CasualtiesUnknown.Hotbar
                 Item prev = _model.GetItem(slotIdx);
                 _model.Clear(slotIdx);
                 PlayerCamera.main?.PlayUISound(PlayerCamera.UISoundType.MiniClick);
-                LogSlotOp("右键解绑", slotIdx, prev, "鼠标右键");
+                LogSlotOp("槽位解绑", slotIdx, prev, "中键/Alt+右键");
             }
             return true;
         }
@@ -132,9 +132,14 @@ namespace CasualtiesUnknown.Hotbar
                 var hover = HoverItemLocator.ItemUnderMouse();
                 if (hover != null)
                 {
-                    _model.Link(i, hover);
-                    LogSlotOp("悬停绑定", i, hover, "槽位热键");
-                    return;
+                    if (string.IsNullOrEmpty(hover.id) || _model.GetId(i) != hover.id)
+                    {
+                        _model.Link(i, hover);
+                        LogSlotOp("悬停绑定", i, hover, "槽位热键");
+                        return;
+                    }
+                    // 悬停物品与槽位已绑定同 ID 时不重绑拦截，仅优先指向该实例后继续走选中或切主手流程
+                    _model.PreferHoveredInstance(i, hover);
                 }
                 if (_cfg.SafeQuickUse.Value && _model.IsConsumableSlot(i))
                 {
