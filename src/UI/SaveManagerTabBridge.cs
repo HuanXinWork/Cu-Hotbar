@@ -1,10 +1,11 @@
 using System;
 using System.Reflection;
 using HarmonyLib;
+using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>反射对接 CuSaveManager 侧栏扩展点并同步查询宿主面板打开阻挡态。</summary>
+    /// <summary>反射对接 CuSaveManager 侧栏扩展点、统一缩放协议与宿主面板打开阻挡态。</summary>
     internal static class SaveManagerTabBridge
     {
         private static bool _registered;
@@ -13,6 +14,11 @@ namespace CasualtiesUnknown.Hotbar
         private static FieldInfo _pluginInstanceField;
         private static FieldInfo _windowField;
         private static PropertyInfo _windowOpenProp;
+
+        private static bool _hostScaleResolved;
+        private static PropertyInfo _hostScaleProp;
+        private static Func<int> _hostScaleGetter;
+        private static Action<int> _hostScaleSetter;
 
         internal static bool Register(HotbarConfig cfg)
         {
@@ -104,6 +110,76 @@ namespace CasualtiesUnknown.Hotbar
                 }
             }
             catch { }
+        }
+
+        internal static int GetEffectiveUiScalePercent(HotbarConfig cfg)
+        {
+            EnsureHostScaleResolved();
+            if (_hostScaleProp != null)
+            {
+                try
+                {
+                    int hostVal = _hostScaleGetter != null
+                        ? _hostScaleGetter()
+                        : (int)_hostScaleProp.GetValue(null, null);
+                    return Mathf.Clamp(hostVal, 75, 150);
+                }
+                catch { }
+            }
+            int localVal = cfg?.UiScalePercent != null ? cfg.UiScalePercent.Value : 100;
+            return Mathf.Clamp(localVal, 75, 150);
+        }
+
+        internal static void SetEffectiveUiScalePercent(HotbarConfig cfg, int percent)
+        {
+            int clamped = Mathf.Clamp(percent, 75, 150);
+            EnsureHostScaleResolved();
+            if (_hostScaleProp != null && _hostScaleProp.CanWrite)
+            {
+                try
+                {
+                    if (_hostScaleSetter != null) _hostScaleSetter(clamped);
+                    else _hostScaleProp.SetValue(null, clamped, null);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    ModLog.Warning("Interop", $"写入宿主 UiScalePercent 失败：{ex.Message}");
+                }
+            }
+            cfg?.SetUiScalePercentAndSave(clamped);
+        }
+
+        // 缓存静态属性强类型委托，避免 IMGUI 每帧查询缩放比例时触发反射装箱
+        private static void EnsureHostScaleResolved()
+        {
+            if (_hostScaleResolved) return;
+            _hostScaleResolved = true;
+
+            try
+            {
+                var type = AccessTools.TypeByName("CasualtiesUnknown.SaveManager.ExternalTabRegistry");
+                if (type == null) return;
+
+                var prop = type.GetProperty("UiScalePercent", BindingFlags.Public | BindingFlags.Static);
+                if (prop == null || prop.PropertyType != typeof(int) || !prop.CanRead) return;
+
+                _hostScaleProp = prop;
+                var getMethod = prop.GetGetMethod(nonPublic: false);
+                if (getMethod != null)
+                    _hostScaleGetter = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), getMethod);
+
+                if (prop.CanWrite)
+                {
+                    var setMethod = prop.GetSetMethod(nonPublic: false);
+                    if (setMethod != null)
+                        _hostScaleSetter = (Action<int>)Delegate.CreateDelegate(typeof(Action<int>), setMethod);
+                }
+            }
+            catch (Exception ex)
+            {
+                ModLog.Debug("Interop", $"解析宿主 UiScalePercent 失败：{ex.Message}");
+            }
         }
     }
 }

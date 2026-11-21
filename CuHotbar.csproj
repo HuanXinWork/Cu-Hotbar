@@ -6,7 +6,7 @@
     <RootNamespace>CasualtiesUnknown.Hotbar</RootNamespace>
     <LangVersion>9</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
     <Description>Casualties Unknown 快捷物品栏模组</Description>
 
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -80,5 +80,20 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <GeneratedBuildInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</GeneratedBuildInfoFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <_BuildInfoLines Include="namespace CasualtiesUnknown.Hotbar { internal static class BuildInfo { internal const string Version = &quot;$(Version)&quot;%3B } }" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(GeneratedBuildInfoFile)" Lines="@(_BuildInfoLines)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Remove="$(GeneratedBuildInfoFile)" />
+      <Compile Include="$(GeneratedBuildInfoFile)" Visible="false" />
+      <FileWrites Include="$(GeneratedBuildInfoFile)" />
+    </ItemGroup>
+  </Target>
 
 </Project>

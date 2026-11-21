@@ -2,6 +2,23 @@
 
 > 中文更新日志：见 [changes.md](changes.md)
 
+## v1.1.2
+
+### Added
+
+- **Top-bar UI scale presets & shared scaling**: lifted the `1.0x` scale cap on high-DPI displays while keeping the window centered when resizing, and added `90% / 100% / 115% / 130%` preset buttons in the top bar; syncs with `CuSaveManager`'s shared scale when present, or persists locally under `UI.UiScalePercent` when standalone.
+- **Two-step confirmation guards**: "Clear all slots" and "Reset position" now ask for inline confirmation (`Confirm` / `Cancel`) before clearing bindings or resetting coordinates.
+
+### Changed
+
+- **Unified translucent monochrome wireframe theme**: updated the settings panel, main-menu button, pause-menu launcher button (`320x84` non-overlapping slot), and update notice banner to match the translucent black-and-white line style across `CuSaveManager`, `SkinSync`, and `HwAssistive`.
+- **Scheme A typography & in-game HUD refinement**: raised panel fonts to the bold Scheme A scale (`32px` header, `22px` section titles, `20px` controls/labels, `18px` descriptions/value boxes); bumped in-game slot key and stack badges to `15px`, and refined the bottom status bar to a neutral white fill over a dark translucent track.
+- **Standardized CI & release pipeline**: bound plugin version to single-source `BuildInfo.Version` and migrated GitHub Actions to the unified auto-tag release and daily Nightly pre-release workflow publishing Release/Debug bundles, standalone DLLs, and `SHA256SUMS.txt`.
+
+### Fixed
+
+- Fixed label wrapping and control clipping on slider rows, horizontal/vertical direction segments, and hotkey capture rows in English and at `130%` scale, and narrowed the top-bar drag region so it does not intercept scale preset clicks.
+
 ## v1.1.1
 
 ### Added

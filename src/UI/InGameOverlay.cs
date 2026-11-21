@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
@@ -5,10 +6,12 @@ namespace CasualtiesUnknown.Hotbar
     /// <summary>独立模式下暂停菜单打开时绘制的游戏内设置面板唤起按钮。</summary>
     internal sealed class InGameOverlay
     {
-        private const float ButtonWidth = 240f;
-        private const float ButtonHeight = 64f;
-        private const float MarginRight = 32f;
-        private const float MarginBottom = 32f;
+        // 与 HwAssistive / SkinSync / CuSaveManager 共享 320x84 规格与底部第 0 堆叠槽（24px），避免多模组并存时按钮交叠
+        private const float ButtonWidth = 320f;
+        private const float ButtonHeight = 84f;
+        private const float MarginRight = 24f;
+        private const float MarginBottom = 24f;
+        private const float BorderThickness = 5f;
 
         internal static bool ShouldShow()
         {
@@ -16,24 +19,31 @@ namespace CasualtiesUnknown.Hotbar
             return PauseMenuCompat.IsPauseMenuOpen();
         }
 
-        internal void Draw(System.Action onClick)
+        internal void Draw(Action onClick)
         {
             if (!ShouldShow()) return;
 
             float x = Screen.width - ButtonWidth - MarginRight;
-            float y = Screen.height - ButtonHeight - MarginBottom;
+            float y = Mathf.Clamp(Screen.height - ButtonHeight - MarginBottom, 12f, Screen.height - ButtonHeight - 12f);
             var rect = new Rect(x, y, ButtonWidth, ButtonHeight);
 
+            bool clicked = false;
             BlackWhiteSkin.Push();
             try
             {
-                if (GUI.Button(rect, HotbarI18n.T("app.menu_button"), BlackWhiteSkin.TabStyle))
-                    onClick?.Invoke();
-                BlackWhiteSkin.DrawBorder(rect, 2f);
+                clicked = GUI.Button(rect, HotbarI18n.T("app.menu_button"), BlackWhiteSkin.OverlayBtnStyle);
+                BlackWhiteSkin.DrawBorder(rect, BorderThickness);
             }
             finally
             {
                 BlackWhiteSkin.Pop();
+            }
+
+            if (clicked)
+            {
+                BlackWhiteSkin.ClearTextFocus();
+                onClick?.Invoke();
+                GUIUtility.ExitGUI();
             }
         }
     }

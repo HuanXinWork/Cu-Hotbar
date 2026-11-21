@@ -38,6 +38,7 @@ namespace CasualtiesUnknown.Hotbar
         internal ConfigEntry<bool> AutoReload { get; }
         internal ConfigEntry<bool> SameKeyPutAway { get; }
         internal ConfigEntry<string> PreferredLanguage { get; }
+        internal ConfigEntry<int> UiScalePercent { get; }
 
         internal HotbarConfig(ConfigFile config)
         {
@@ -85,6 +86,20 @@ namespace CasualtiesUnknown.Hotbar
                 "再次按同一槽位键时把该槽物品收起（优先归还原位，其次身上空位），无需单独留一个空槽用于收起。");
             PreferredLanguage = config.Bind("I18n", "PreferredLanguage", "auto",
                 "界面语言：auto=跟随游戏；zh=强制中文；en=强制英文。");
+            UiScalePercent = config.Bind("UI", "UiScalePercent", 100,
+                new ConfigDescription("设置面板整体缩放百分比。", new AcceptableValueRange<int>(75, 150)));
+        }
+
+        internal void Save()
+        {
+            try { _config?.Save(); }
+            catch (System.Exception ex) { ModLog.Warning("Config", $"保存配置失败：{ex.Message}"); }
+        }
+
+        internal void SetUiScalePercentAndSave(int percent)
+        {
+            UiScalePercent.Value = Mathf.Clamp(percent, 75, 150);
+            Save();
         }
 
         // 仅校验三组标准修饰键并放行 WASD/Space 等常规键，规避 BepInEx KeyboardShortcut.IsDown 全键盘排斥导致移动中热键失灵

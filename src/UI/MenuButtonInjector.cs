@@ -2,18 +2,26 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>独立模式下在主菜单克隆注入设置入口按钮，并保持文案随语言设置同步。</summary>
+    /// <summary>独立模式下在主菜单注入半透明黑白风格设置入口按钮，并保持文案随语言设置同步。</summary>
     internal static class MenuButtonInjector
     {
         private const string InjectedName = "Hotbar_MenuButton";
 
         private static Action _onClick;
         private static GameObject _injectedButton;
+
+        private static Texture2D _normalTex;
+        private static Texture2D _hoverTex;
+        private static Texture2D _activeTex;
+        private static Sprite _normalSprite;
+        private static Sprite _hoverSprite;
+        private static Sprite _activeSprite;
 
         internal static bool Active { get; private set; }
         internal static RectTransform InjectedRect { get; private set; }
@@ -35,6 +43,10 @@ namespace CasualtiesUnknown.Hotbar
             {
                 try { UnityEngine.Object.Destroy(_injectedButton); } catch { }
             }
+            DestroySpriteAndTex(ref _normalSprite, ref _normalTex);
+            DestroySpriteAndTex(ref _hoverSprite, ref _hoverTex);
+            DestroySpriteAndTex(ref _activeSprite, ref _activeTex);
+
             Active = false;
             _onClick = null;
             _injectedButton = null;
@@ -71,6 +83,7 @@ namespace CasualtiesUnknown.Hotbar
                 {
                     _injectedButton = existing.gameObject;
                     InjectedRect = existing as RectTransform;
+                    ApplyMonochromeButtonStyle(_injectedButton);
                     ReplaceText(_injectedButton, HotbarI18n.T("app.menu_button"));
                     return;
                 }
@@ -95,6 +108,7 @@ namespace CasualtiesUnknown.Hotbar
 
             DestroyLocalizers(clone);
             CleanupChildren(clone);
+            ApplyMonochromeButtonStyle(clone);
             ReplaceText(clone, HotbarI18n.T("app.menu_button"));
             clone.AddComponent<MenuButtonLabelSync>();
 
@@ -118,8 +132,96 @@ namespace CasualtiesUnknown.Hotbar
 
         private static void InvokeOnClick()
         {
+            // 释放 EventSystem 当前选中对象，防止点击后按空格/回车重复触发按钮
+            if (EventSystem.current != null)
+                EventSystem.current.SetSelectedGameObject(null);
             try { _onClick?.Invoke(); }
             catch (Exception ex) { ModLog.Warning("UI", $"按钮点击异常：{ex.Message}"); }
+        }
+
+        private static void ApplyMonochromeButtonStyle(GameObject buttonGo)
+        {
+            EnsureSpritesBuilt();
+
+            var img = buttonGo.GetComponent<Image>();
+            if (img != null)
+            {
+                img.sprite = _normalSprite;
+                img.type = Image.Type.Sliced;
+                img.fillCenter = true;
+                img.color = Color.white;
+            }
+
+            var btn = buttonGo.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.navigation = new Navigation { mode = Navigation.Mode.None };
+                btn.transition = Selectable.Transition.SpriteSwap;
+                btn.spriteState = new SpriteState
+                {
+                    highlightedSprite = _hoverSprite,
+                    pressedSprite = _activeSprite,
+                    selectedSprite = _normalSprite,
+                    disabledSprite = _normalSprite,
+                };
+            }
+        }
+
+        private static void EnsureSpritesBuilt()
+        {
+            if (_normalSprite != null) return;
+            _normalSprite = BuildSlicedMonoSprite(0, 150, 255, 220, 2, out _normalTex);
+            _hoverSprite = BuildSlicedMonoSprite(60, 190, 255, 255, 2, out _hoverTex);
+            _activeSprite = BuildSlicedMonoSprite(90, 210, 255, 255, 2, out _activeTex);
+        }
+
+        private static Sprite BuildSlicedMonoSprite(byte fillLum, byte fillAlpha, byte edgeLum, byte edgeAlpha, int borderPx, out Texture2D tex)
+        {
+            int size = borderPx * 2 + 4;
+            tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+            var fill = new Color32(fillLum, fillLum, fillLum, fillAlpha);
+            var edge = new Color32(edgeLum, edgeLum, edgeLum, edgeAlpha);
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    bool isEdge = x < borderPx || x >= size - borderPx || y < borderPx || y >= size - borderPx;
+                    pixels[y * size + x] = isEdge ? edge : fill;
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply();
+
+            var sprite = Sprite.Create(
+                tex,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(borderPx, borderPx, borderPx, borderPx));
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            return sprite;
+        }
+
+        private static void DestroySpriteAndTex(ref Sprite sprite, ref Texture2D tex)
+        {
+            if (sprite != null)
+            {
+                try { UnityEngine.Object.Destroy(sprite); } catch { }
+                sprite = null;
+            }
+            if (tex != null)
+            {
+                try { UnityEngine.Object.Destroy(tex); } catch { }
+                tex = null;
+            }
         }
 
         private static void PlaceBeforeOverlayScreens(PreRunScript pre, Transform parent, Transform buttonTransform)
@@ -180,6 +282,17 @@ namespace CasualtiesUnknown.Hotbar
                 if (child != primaryTextChild)
                     UnityEngine.Object.Destroy(child.gameObject);
             }
+
+            // 原版 loadButton 子文本节点为左侧图标预留了偏移，克隆后必须重置为居中铺满以防文字偏歪裁切
+            if (primaryTextChild is RectTransform textRt)
+            {
+                textRt.anchorMin = Vector2.zero;
+                textRt.anchorMax = Vector2.one;
+                textRt.pivot = new Vector2(0.5f, 0.5f);
+                textRt.offsetMin = new Vector2(14f, 8f);
+                textRt.offsetMax = new Vector2(-14f, -8f);
+                textRt.localScale = Vector3.one;
+            }
         }
 
         private static bool HasTextComponent(Transform root)
@@ -203,6 +316,13 @@ namespace CasualtiesUnknown.Hotbar
             {
                 if (t == null) continue;
                 t.text = first ? newText : "";
+                t.color = Color.white;
+                t.fontStyle = FontStyle.Bold;
+                t.fontSize = Mathf.Max(t.fontSize, 24);
+                t.alignment = TextAnchor.MiddleCenter;
+                t.horizontalOverflow = HorizontalWrapMode.Overflow;
+                t.verticalOverflow = VerticalWrapMode.Overflow;
+                t.resizeTextForBestFit = false;
                 first = false;
             }
             foreach (var mb in clone.GetComponentsInChildren<MonoBehaviour>(includeInactive: true))
@@ -212,8 +332,23 @@ namespace CasualtiesUnknown.Hotbar
                 if (type.FullName == null || !type.FullName.StartsWith("TMPro.TextMesh", StringComparison.Ordinal)) continue;
                 var prop = type.GetProperty("text", BindingFlags.Public | BindingFlags.Instance);
                 if (prop == null || !prop.CanWrite) continue;
-                try { prop.SetValue(mb, first ? newText : "", null); first = false; }
+                try
+                {
+                    prop.SetValue(mb, first ? newText : "", null);
+                    SetMemberIfPresent(type, mb, "color", Color.white);
+                    SetMemberIfPresent(type, mb, "enableWordWrapping", false);
+                    first = false;
+                }
                 catch { }
+            }
+        }
+
+        private static void SetMemberIfPresent(Type type, object instance, string propName, object value)
+        {
+            var prop = type.GetProperty(propName, BindingFlags.Public | BindingFlags.Instance);
+            if (prop != null && prop.CanWrite)
+            {
+                try { prop.SetValue(instance, value, null); } catch { }
             }
         }
 

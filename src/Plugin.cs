@@ -19,7 +19,7 @@ namespace CasualtiesUnknown.Hotbar
     {
         internal const string PluginGuid = "com.casualtiesUnknown.hotbar";
         internal const string PluginName = "CuHotbar";
-        internal const string PluginVersion = "1.1.1";
+        internal const string PluginVersion = BuildInfo.Version;
 
         private const string SaveManagerGuid = "com.casualtiesUnknown.saveManager";
         private const string TogetherGuid = "CasualtiesMP";

@@ -16,12 +16,13 @@ namespace CasualtiesUnknown.Hotbar
         private const float SelFrameThickness = 3f;
         private const float StatusBarInset = 4f;
         private const float StatusBarHeight = 4f;
+        private const int SlotLabelFontSize = 15;
 
         private static readonly Color SlotBg = new Color(0f, 0f, 0f, 0.55f);
-        private static readonly Color SlotBorder = new Color(1f, 1f, 1f, 0.35f);
-        private static readonly Color StatusTrackColor = new Color(1f, 1f, 1f, 0.14f);
+        private static readonly Color SlotBorder = new Color(1f, 1f, 1f, 0.40f);
+        private static readonly Color StatusTrackColor = new Color32(0, 0, 0, 150);
         private static readonly Color SelFrameColor = Color.white;
-        private static readonly Color KeyUnselectedColor = new Color(1f, 1f, 1f, 0.75f);
+        private static readonly Color KeyUnselectedColor = new Color(1f, 1f, 1f, 0.78f);
         private static readonly Color TextOutlineColor = new Color(0f, 0f, 0f, 0.88f);
         private static readonly Vector2 TextOutlineDistance = new Vector2(1f, -1f);
 
@@ -242,26 +243,26 @@ namespace CasualtiesUnknown.Hotbar
 
             var selFrame = BuildSelFrame(rect, uiLayer);
 
-            var count = NewText("Count", rect, 14, TextAnchor.LowerRight, uiLayer);
+            var count = NewText("Count", rect, SlotLabelFontSize, TextAnchor.LowerRight, uiLayer);
             var cRect = count.rectTransform;
             cRect.anchorMin = new Vector2(1f, 0f);
             cRect.anchorMax = new Vector2(1f, 0f);
             cRect.pivot = new Vector2(1f, 0f);
             cRect.anchoredPosition = new Vector2(-5f, 9f);
-            cRect.sizeDelta = new Vector2(SlotSize - 10f, 18f);
+            cRect.sizeDelta = new Vector2(SlotSize - 10f, 20f);
             count.text = "";
 
             var hotkeyEntry = _cfg.SlotHotkey(index);
             if (_subscribedSlots.Add(index))
                 hotkeyEntry.SettingChanged += _onSlotHotkeyChanged;
 
-            var key = NewText("Key", rect, 13, TextAnchor.UpperLeft, uiLayer);
+            var key = NewText("Key", rect, SlotLabelFontSize, TextAnchor.UpperLeft, uiLayer);
             var kRect = key.rectTransform;
             kRect.anchorMin = new Vector2(0f, 1f);
             kRect.anchorMax = new Vector2(0f, 1f);
             kRect.pivot = new Vector2(0f, 1f);
             kRect.anchoredPosition = new Vector2(5f, -4f);
-            kRect.sizeDelta = new Vector2(SlotSize - 10f, 18f);
+            kRect.sizeDelta = new Vector2(SlotSize - 10f, 20f);
             key.color = KeyUnselectedColor;
             key.text = FormatKeyLabel(hotkeyEntry.Value);
 
@@ -441,33 +442,28 @@ namespace CasualtiesUnknown.Hotbar
         private static void ApplyStatusBar(Slot slot, Item item)
         {
             float fill;
-            float colorCond;
             if (item.battery != null && item.battery.hasBattery && item.battery.maxCharge > 0f)
             {
                 fill = Mathf.Clamp01(item.battery.GetCharge() / item.battery.maxCharge);
-                colorCond = fill;
             }
             else if (item.TryGetComponent<AmmoScript>(out var ammo)
                      && ammo.itemType == AmmoScript.AmmoItemType.Magazine && ammo.maxRounds > 0)
             {
                 fill = Mathf.Clamp01((float)ammo.rounds / ammo.maxRounds);
-                colorCond = fill;
             }
             else if (item.container != null && item.container.maxWeight > 0f)
             {
                 fill = Mathf.Clamp01(item.container.GetHoldingWeight() / item.container.maxWeight);
-                colorCond = Mathf.Clamp01(item.condition);
             }
             else
             {
                 fill = Mathf.Clamp01(item.condition);
-                colorCond = fill;
             }
 
             float innerW = SlotSize - StatusBarInset * 2f;
             slot.StatusTrack.enabled = true;
             slot.Status.rectTransform.sizeDelta = new Vector2(innerW * fill, StatusBarHeight);
-            slot.Status.color = PlayerCamera.ConditionToColor(colorCond);
+            slot.Status.color = Color.white;
             slot.Status.enabled = true;
         }
 
@@ -513,11 +509,13 @@ namespace CasualtiesUnknown.Hotbar
         {
             if (_borderSprite != null) return _borderSprite;
 
-            const int size = 8;
+            const int borderPx = 1;
+            const int size = borderPx * 2 + 4;
             _borderTex = new Texture2D(size, size, TextureFormat.RGBA32, false)
             {
                 hideFlags = HideFlags.HideAndDontSave,
                 filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
             };
             var edge = new Color32(255, 255, 255, 255);
             var clear = new Color32(0, 0, 0, 0);
@@ -526,7 +524,7 @@ namespace CasualtiesUnknown.Hotbar
             {
                 for (int x = 0; x < size; x++)
                 {
-                    bool isEdge = x == 0 || x == size - 1 || y == 0 || y == size - 1;
+                    bool isEdge = x < borderPx || x >= size - borderPx || y < borderPx || y >= size - borderPx;
                     pixels[y * size + x] = isEdge ? edge : clear;
                 }
             }
@@ -540,7 +538,7 @@ namespace CasualtiesUnknown.Hotbar
                 100f,
                 0,
                 SpriteMeshType.FullRect,
-                new Vector4(2f, 2f, 2f, 2f));
+                new Vector4(borderPx, borderPx, borderPx, borderPx));
             _borderSprite.hideFlags = HideFlags.HideAndDontSave;
             return _borderSprite;
         }

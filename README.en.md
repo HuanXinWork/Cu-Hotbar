@@ -1,4 +1,4 @@
-# CuHotbar V1.1.1 for Casualties: Unknown
+# CuHotbar V1.1.2 for Casualties: Unknown
 
 > A Minecraft-style hotbar mod for Casualties: Unknown
 > Compatible with: CuSaveManager (settings merge into its panel when present; its absence does not break features)
@@ -64,7 +64,7 @@ After launch, a "CuHotbar" button is injected on the main menu; in-game, opening
 | Hotkeys | Toggle settings panel |
 | Misc | Show mod logs in game console, accept update notifications, UI language (follow game / Chinese / English) |
 
-> Switch keys and the use key both support combos. Click the matching button, then press a new key (right/middle mouse buttons and modifier+mouse combos supported; plain left-click cancels capture) to bind, or "Clear" to unbind the hotkey; right-clicking a slot in-game clears its item binding. Pointing at an item and pressing a slot key binds that item; pressing with no item under the cursor switches instead. Horizontal defaults to the bottom and vertical to the right; switching direction applies the matching default position. Slot count and rows can keep increasing; set too large and slots may overflow the screen.
+> The top bar provides `90% / 100% / 115% / 130%` panel scale presets (synced with CuSaveManager when present). Switch keys and the use key both support combos. Click the matching button, then press a new key (right/middle mouse buttons and modifier+mouse combos supported; plain left-click cancels capture) to bind, or "Clear" to unbind the hotkey; right-clicking a slot in-game clears its item binding. Pointing at an item and pressing a slot key binds that item; pressing with no item under the cursor switches instead. Horizontal defaults to the bottom and vertical to the right; switching direction applies the matching default position. Slot count and rows can keep increasing; set too large and slots may overflow the screen.
 
 ## Soft dependencies
 
@@ -72,7 +72,7 @@ After launch, a "CuHotbar" button is injected on the main menu; in-game, opening
 
 ## Update check
 
-On startup it compares against the latest GitHub release and shows a red notice at the top-left when a new version exists; click it to open the release page. It can be turned off under Settings → Misc.
+On startup it compares against the latest GitHub release and shows a monochrome notice banner at the top-left when a new version exists; click it to open the release page. It can be turned off under Settings → Misc.
 
 ## Related
 
