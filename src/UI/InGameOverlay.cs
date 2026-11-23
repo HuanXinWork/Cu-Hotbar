@@ -3,10 +3,10 @@ using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
 {
-    /// <summary>独立模式下暂停菜单打开时绘制的游戏内设置面板唤起按钮。</summary>
+    /// <summary>独立模式下暂停表盘按钮尚未挂载时的右下角兜底唤起入口。</summary>
     internal sealed class InGameOverlay
     {
-        // 与 HwAssistive / SkinSync / CuSaveManager 共享 320x84 规格与底部第 0 堆叠槽（24px），避免多模组并存时按钮交叠
+        // 与 HwAssistive / SkinSync / CuSaveManager 共享 320x84 规格与底部第 0 堆叠槽（24px），避免极端回退时按钮交叠
         private const float ButtonWidth = 320f;
         private const float ButtonHeight = 84f;
         private const float MarginRight = 24f;
@@ -15,6 +15,7 @@ namespace CasualtiesUnknown.Hotbar
 
         internal static bool ShouldShow()
         {
+            if (PauseDialButtonInjector.IsMounted) return false;
             if (SettingsMenu.instance != null || UiBlocker.IsBlocking) return false;
             return PauseMenuCompat.IsPauseMenuOpen();
         }

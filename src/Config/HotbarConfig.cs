@@ -39,6 +39,12 @@ namespace CasualtiesUnknown.Hotbar
         internal ConfigEntry<bool> SameKeyPutAway { get; }
         internal ConfigEntry<string> PreferredLanguage { get; }
         internal ConfigEntry<int> UiScalePercent { get; }
+        internal ConfigEntry<bool> PauseDialAutoAvoid { get; }
+        internal ConfigEntry<float> PauseDialAngleDeg { get; }
+        internal ConfigEntry<float> PauseDialRadiusOffset { get; }
+        internal ConfigEntry<int> PauseDialScalePercent { get; }
+
+        internal ConfigFile RawConfig => _config;
 
         internal HotbarConfig(ConfigFile config)
         {
@@ -88,6 +94,26 @@ namespace CasualtiesUnknown.Hotbar
                 "界面语言：auto=跟随游戏；zh=强制中文；en=强制英文。");
             UiScalePercent = config.Bind("UI", "UiScalePercent", 100,
                 new ConfigDescription("设置面板整体缩放百分比。", new AcceptableValueRange<int>(75, 150)));
+            PauseDialAutoAvoid = config.Bind("PauseDial", "AutoAvoidOverlap", true,
+                "独立模式下暂停表盘按钮是否自动避让原版按钮与其他模组面板，并在空间拥挤时自适应缩小。");
+            PauseDialAngleDeg = config.Bind("PauseDial", "AngleDegrees", PauseDialLayoutSolver.DefaultAngleDeg,
+                new ConfigDescription("暂停表盘按钮环绕角度（度，0=正右，90=正上，-90=正下，±180=正左）。",
+                    new AcceptableValueRange<float>(-180f, 180f)));
+            PauseDialRadiusOffset = config.Bind("PauseDial", "RadiusOffset", 0f,
+                new ConfigDescription("暂停表盘按钮相对原版按钮轨道的半径偏移（像素）。",
+                    new AcceptableValueRange<float>(PauseDialLayoutSolver.MinRadiusOffset, PauseDialLayoutSolver.MaxRadiusOffset)));
+            PauseDialScalePercent = config.Bind("PauseDial", "ScalePercent", 100,
+                new ConfigDescription("暂停表盘按钮大小百分比（60% ~ 160%）。",
+                    new AcceptableValueRange<int>(60, 160)));
+        }
+
+        internal void ResetPauseDialLayout()
+        {
+            PauseDialAutoAvoid.Value = true;
+            PauseDialAngleDeg.Value = PauseDialLayoutSolver.DefaultAngleDeg;
+            PauseDialRadiusOffset.Value = 0f;
+            PauseDialScalePercent.Value = 100;
+            Save();
         }
 
         internal void Save()

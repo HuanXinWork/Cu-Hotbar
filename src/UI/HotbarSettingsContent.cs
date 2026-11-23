@@ -6,7 +6,7 @@ using UnityEngine;
 namespace CasualtiesUnknown.Hotbar
 {
     /// <summary>可复用的快捷栏设置与关于页 IMGUI 内容，供独立窗口与 SaveManager 侧栏共用。</summary>
-    internal sealed class HotbarSettingsContent
+    internal sealed partial class HotbarSettingsContent
     {
         private const float RowH = 46f;
         private const float InlineBtnH = 40f;
@@ -335,6 +335,11 @@ namespace CasualtiesUnknown.Hotbar
             DrawHotkeyRow(HotbarI18n.T("lbl.hotkey_panel_clean"), _cfg.ToggleSettingsHotkey);
             GUILayout.EndVertical();
 
+            if (PauseDialButtonInjector.IsEnabled)
+            {
+                DrawPauseDialSection(sliderLabelW);
+            }
+
             DrawSectionHeader(HotbarI18n.T("sec.misc"));
             GUILayout.BeginVertical(BlackWhiteSkin.CardStyle);
             DrawSwitch(HotbarI18n.T("sw.show_log_in_console"), _cfg.ShowLogInConsole);
@@ -354,6 +359,13 @@ namespace CasualtiesUnknown.Hotbar
             for (int i = 0; i < SliderLabelKeys.Length; i++)
             {
                 width = Mathf.Max(width, BlackWhiteSkin.CalcWidth(style, HotbarI18n.T(SliderLabelKeys[i]), 208f, 10f));
+            }
+            if (PauseDialButtonInjector.IsEnabled)
+            {
+                for (int i = 0; i < PauseDialSliderLabelKeys.Length; i++)
+                {
+                    width = Mathf.Max(width, BlackWhiteSkin.CalcWidth(style, HotbarI18n.T(PauseDialSliderLabelKeys[i]), 208f, 10f));
+                }
             }
             return width;
         }
@@ -581,18 +593,21 @@ namespace CasualtiesUnknown.Hotbar
             {
                 BlackWhiteSkin.ClearTextFocus();
                 entry.Value = "auto";
+                PauseDialButtonInjector.RefreshTooltipText();
             }
             if (GUI.Button(new Rect(r.x + autoW + 8f, r.y, zhW, r.height), zhText,
                 mode == "zh" ? BlackWhiteSkin.ControlBtnActiveStyle : BlackWhiteSkin.ControlBtnStyle))
             {
                 BlackWhiteSkin.ClearTextFocus();
                 entry.Value = "zh";
+                PauseDialButtonInjector.RefreshTooltipText();
             }
             if (GUI.Button(new Rect(r.x + autoW + 8f + zhW + 8f, r.y, enW, r.height), enText,
                 mode == "en" ? BlackWhiteSkin.ControlBtnActiveStyle : BlackWhiteSkin.ControlBtnStyle))
             {
                 BlackWhiteSkin.ClearTextFocus();
                 entry.Value = "en";
+                PauseDialButtonInjector.RefreshTooltipText();
             }
             GUILayout.EndHorizontal();
         }

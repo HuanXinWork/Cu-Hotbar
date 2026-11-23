@@ -99,6 +99,8 @@ namespace CasualtiesUnknown.Hotbar
                 _openWindowFromOverlay = () => _window.OpenIfClosed();
                 _overlay = new InGameOverlay();
                 MenuButtonInjector.Setup(() => _window.Toggle());
+                PauseDialButtonInjector.Setup(_cfg, _cfg.RawConfig, _openWindowFromOverlay);
+                _cfg.PreferredLanguage.SettingChanged += (_, __) => PauseDialButtonInjector.RefreshTooltipText();
                 SceneManager.sceneLoaded += OnSceneLoaded;
                 ModLog.Info("UI", "独立模式已启用");
             }
@@ -168,6 +170,7 @@ namespace CasualtiesUnknown.Hotbar
             try { _window?.Close(); } catch { }
             try { UiBlocker.Unblock(); } catch { }
             try { MenuButtonInjector.Dispose(); } catch { }
+            try { PauseDialButtonInjector.Dispose(); } catch { }
             try { _view?.Dispose(); } catch { }
             try { HotbarView.DisposeSharedAssets(); } catch { }
             try { BlackWhiteSkin.Dispose(); } catch { }
