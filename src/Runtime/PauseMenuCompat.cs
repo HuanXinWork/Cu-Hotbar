@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -16,6 +17,43 @@ namespace CasualtiesUnknown.Hotbar
         private static readonly Dictionary<Type, PropertyInfo> _inputFocusedProps
             = new Dictionary<Type, PropertyInfo>();
         private static readonly List<RaycastResult> _scrollRayResults = new List<RaycastResult>();
+
+        private static bool _prostheticsUiResolved;
+        private static Func<bool> _isSurgeryOpen;
+        private static Func<bool> _isCyberPanelOpen;
+
+        internal static bool IsProstheticsSurgeryOpen()
+        {
+            EnsureProstheticsUiResolved();
+            if (_isSurgeryOpen == null) return false;
+            try { return _isSurgeryOpen(); }
+            catch { return false; }
+        }
+
+        internal static bool IsProstheticsCyberPanelOpen()
+        {
+            EnsureProstheticsUiResolved();
+            if (_isCyberPanelOpen == null) return false;
+            try { return _isCyberPanelOpen(); }
+            catch { return false; }
+        }
+
+        internal static bool IsCameraTransientOverlay(PlayerCamera cam, Transform tf)
+        {
+            if (cam == null || tf == null) return false;
+            if (cam.dragImage != null && tf.IsChildOf(cam.dragImage.transform)) return true;
+            if (cam.consciousnessFade != null && tf.IsChildOf(cam.consciousnessFade.transform)) return true;
+            return false;
+        }
+
+        internal static bool IsThirdPartyOverlayCanvas(GameObject go, Canvas mainCanvas)
+        {
+            if (go == null) return false;
+            var hitCanvas = go.GetComponentInParent<Canvas>();
+            return hitCanvas != null
+                && hitCanvas != mainCanvas
+                && hitCanvas.renderMode != RenderMode.WorldSpace;
+        }
 
         internal static bool IsPauseMenuOpen()
         {
@@ -44,6 +82,7 @@ namespace CasualtiesUnknown.Hotbar
             if (MinigameBase.main != null && MinigameBase.main.currentMinigame != null) return "医疗小游戏进行中";
             if (LiquidTransfer.instance != null) return "液体转移界面打开";
             if (ScrollableText.textExists) return "剧情文本覆盖层显示中";
+            if (IsProstheticsSurgeryOpen()) return "义肢手术界面打开";
 
             var cam = PlayerCamera.main;
             if (cam == null || cam.body == null) return "角色未就绪";
@@ -75,8 +114,10 @@ namespace CasualtiesUnknown.Hotbar
             for (int i = 0; i < _scrollRayResults.Count; i++)
             {
                 var go = _scrollRayResults[i].gameObject;
-                if (go == null) continue;
+                if (go == null || IsCameraTransientOverlay(cam, go.transform)) continue;
                 if (go.GetComponentInParent<HotbarSlotMarker>() != null) return false;
+                // 第三方模组覆盖面板常使用默认层独立 Canvas，须在 UI 层过滤前让行滚轮
+                if (IsThirdPartyOverlayCanvas(go, cam.mainCanvas)) return true;
                 if (uiLayer >= 0 && go.layer != uiLayer) continue;
 
                 if (go.GetComponentInParent<ScrollRect>() != null) return true;
@@ -85,6 +126,30 @@ namespace CasualtiesUnknown.Hotbar
                     return true;
             }
             return false;
+        }
+
+        private static void EnsureProstheticsUiResolved()
+        {
+            if (_prostheticsUiResolved) return;
+            _prostheticsUiResolved = true;
+            _isSurgeryOpen = BindStaticBoolGetter("SurgeryUI", "IsOpen");
+            _isCyberPanelOpen = BindStaticBoolGetter("CyberneticsUIController", "IsOpen");
+        }
+
+        private static Func<bool> BindStaticBoolGetter(string typeName, string propertyName)
+        {
+            try
+            {
+                var type = AccessTools.TypeByName(typeName);
+                var getter = type != null ? AccessTools.PropertyGetter(type, propertyName) : null;
+                if (getter != null && getter.IsStatic && getter.ReturnType == typeof(bool))
+                    return (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), getter);
+            }
+            catch (Exception ex)
+            {
+                ModLog.Warning("Interop", $"解析 {typeName}.{propertyName} 失败：{ex.Message}");
+            }
+            return null;
         }
 
         private static bool IsAnyUiInputFieldFocused()

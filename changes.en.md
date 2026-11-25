@@ -2,6 +2,19 @@
 
 > 中文更新日志：见 [changes.md](changes.md)
 
+## v1.1.4
+
+### Fixed
+
+- Fixed an `ArgumentNullException` in `Body.HasWearable` when dragging to bind, switching to the main hand, or putting away non-wearable items alongside the `Prosthetics` mod; worn-item detection now inspects the item's parent limb directly and avoids false positives on spare gear sharing the same `id`.
+- Fixed activating a slot or triggering auto-refill with a wooden prosthetic hand (`WoodHandRules`) stashing the currently held container before rejecting an unholdable target item; main-hand prosthetic hold rules are now checked before starting any move or put-away step.
+- Fixed the hotbar remaining visible and accepting hotkeys while the full-screen `Prosthetics` surgery UI (`SurgeryUI`) is open by adding surgery UI input gating and auto-hide integration.
+- Fixed click/drag pass-through onto hotbar slots, scroll-wheel capture, and hover item lookup piercing through `CyberPanel`, `CyberHotbar`, rebind popups, and other higher-order or standalone overlay `Canvas` panels that do not use the `"UI"` layer.
+
+### Notes
+
+- When running alongside `Prosthetics` with its active cybernetics bar (`CyberHotbar`) enabled, both bars default to the bottom of the screen; adjust either `CyberHotbar`'s position setting or CuHotbar's "Settings → Position" (and key bindings) if they overlap visually.
+
 ## v1.1.3
 
 ### Fixed

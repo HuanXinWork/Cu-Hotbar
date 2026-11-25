@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BepInEx.Configuration;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -30,6 +31,7 @@ namespace CasualtiesUnknown.Hotbar
         private static bool _fontResolved;
         private static Texture2D _borderTex;
         private static Sprite _borderSprite;
+        private static readonly List<RaycastResult> _hitRayResults = new List<RaycastResult>();
 
         private readonly HotbarConfig _cfg;
         private readonly HotbarModel _model;
@@ -89,6 +91,7 @@ namespace CasualtiesUnknown.Hotbar
             if (cam == null || cam.mainCanvas == null || cam.body == null) return false;
             if (PauseMenuCompat.IsPauseMenuOpen()) return false;
             if (SettingsMenu.instance != null) return false;
+            if (PauseMenuCompat.IsProstheticsSurgeryOpen()) return false;
             if (cam.didDeathScreen || (cam.endScreen != null && cam.endScreen.gameObject.activeInHierarchy)) return false;
             if (WorldGeneration.world != null && (WorldGeneration.world.generatingWorld || WorldGeneration.world.cutsceneActive))
                 return false;
@@ -105,11 +108,35 @@ namespace CasualtiesUnknown.Hotbar
                 : null;
             for (int i = 0; i < _slots.Count; i++)
             {
-                if (RectTransformUtility.RectangleContainsScreenPoint(_slots[i].Rect, screenPos, cam))
-                {
-                    index = i;
-                    return true;
-                }
+                if (!RectTransformUtility.RectangleContainsScreenPoint(_slots[i].Rect, screenPos, cam))
+                    continue;
+                if (IsSlotOccludedByOtherUi(screenPos, i))
+                    continue;
+                index = i;
+                return true;
+            }
+            return false;
+        }
+
+        // 防止高层界面或独立覆盖 Canvas 遮盖槽位时发生点击透传或抢收拖拽
+        private static bool IsSlotOccludedByOtherUi(Vector2 screenPos, int slotIndex)
+        {
+            var es = EventSystem.current;
+            if (es == null) return false;
+
+            var cam = PlayerCamera.main;
+            var ped = new PointerEventData(es) { position = screenPos };
+            _hitRayResults.Clear();
+            es.RaycastAll(ped, _hitRayResults);
+
+            for (int i = 0; i < _hitRayResults.Count; i++)
+            {
+                var go = _hitRayResults[i].gameObject;
+                if (go == null || PauseMenuCompat.IsCameraTransientOverlay(cam, go.transform))
+                    continue;
+
+                var marker = go.GetComponentInParent<HotbarSlotMarker>();
+                return marker == null || marker.Index != slotIndex;
             }
             return false;
         }

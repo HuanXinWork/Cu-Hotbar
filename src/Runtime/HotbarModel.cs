@@ -297,6 +297,11 @@ namespace CasualtiesUnknown.Hotbar
                 ModLog.Debug("Slot", $"激活槽位 #{index + 1} 失败：当前主手无法抓握");
                 return false;
             }
+            if (!ItemMover.CanHandSlotAccept(body, target))
+            {
+                ModLog.Debug("Slot", $"激活槽位 #{index + 1} 失败：当前主手受义肢限制无法持握 {HotbarRuntime.DescribeItem(target)}");
+                return false;
+            }
 
             bool inGesture = MultiplayerCompat.BeginMoveGesture();
             try
@@ -390,6 +395,12 @@ namespace CasualtiesUnknown.Hotbar
             var same = !string.IsNullOrEmpty(id) ? FindHoldableInBody(body, id) : null;
             if (same != null)
             {
+                if (!ItemMover.CanHandSlotAccept(body, same))
+                {
+                    ClearActive();
+                    return;
+                }
+
                 bool inGesture = MultiplayerCompat.BeginMoveGesture();
                 try
                 {
@@ -545,12 +556,13 @@ namespace CasualtiesUnknown.Hotbar
                 return false;
 
             var cont = cam.currentContainer;
+            cont.TryGetComponent<Collider2D>(out var contCol);
             if (cont.TryGetComponent<Item>(out var contItem))
             {
                 if ((bodySet == null || !bodySet.Contains(contItem))
                     && !body.HoldingItem(contItem)
-                    && !body.HasWearable(contItem)
-                    && body.DoPickupCheck(contItem, noAlerts: true))
+                    && !ItemMover.IsWornBy(body, contItem)
+                    && IsWithinPickupReach(body, cont.transform, contCol))
                 {
                     extCont = cont;
                     return true;
@@ -558,13 +570,26 @@ namespace CasualtiesUnknown.Hotbar
                 return false;
             }
 
-            if (Vector2.Distance(cont.transform.position, body.transform.position) < 10f
-                && !Physics2D.Linecast(body.transform.position, cont.transform.position, LayerMask.GetMask("Ground")))
+            if (IsWithinPickupReach(body, cont.transform, contCol))
             {
                 extCont = cont;
                 return true;
             }
             return false;
+        }
+
+        // 复刻原版拾取距离与地形遮挡判定，避免调用原版拾取校验间接触发父容器穿戴态检查
+        private static bool IsWithinPickupReach(Body body, Transform targetTf, Collider2D targetCol)
+        {
+            if (body == null || targetTf == null) return false;
+            Vector2 bodyPos = body.transform.position;
+            if (Vector2.Distance(targetTf.position, bodyPos) >= 10f) return false;
+            Vector2 checkPos = (targetTf.parent == null && targetCol != null)
+                ? (Vector2)targetCol.bounds.center
+                : (Vector2)targetTf.position;
+            int groundMask = LayerMask.GetMask("Ground");
+            return !Physics2D.Linecast(bodyPos, checkPos, groundMask)
+                || Physics2D.OverlapPoint(checkPos, groundMask) != null;
         }
 
         private Item FindInOpenExternalContainer(Body body, string id, bool requireHoldable)

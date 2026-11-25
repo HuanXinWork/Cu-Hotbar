@@ -1,4 +1,5 @@
 using System;
+using HarmonyLib;
 using UnityEngine;
 
 namespace CasualtiesUnknown.Hotbar
@@ -8,6 +9,9 @@ namespace CasualtiesUnknown.Hotbar
     {
         // slots[2] 为角色嘴部槽，进食/呕吐会自动吐出且塞入灯泡会碎裂，常规搬移必须跳过
         private const int MouthSlotIndex = 2;
+
+        private static bool _woodHandChecked;
+        private static Func<InventorySlot, bool> _isWoodHand;
 
         internal struct Origin
         {
@@ -26,11 +30,58 @@ namespace CasualtiesUnknown.Hotbar
             return slot.limb == null || slot.limb.gameObject.activeInHierarchy;
         }
 
+        // 按物品父节点直接判定是否正穿在目标躯体肢体上，避开第三方穿戴补丁对非穿戴物空槽位键抛异常及同 ID 误判
+        internal static bool IsWornBy(Body body, Item item)
+        {
+            if (body == null || item == null || item.Stats == null || !item.Stats.wearable) return false;
+            var parent = item.transform.parent;
+            return parent != null
+                && parent.TryGetComponent<Limb>(out var limb)
+                && limb.body == body
+                && !parent.TryGetComponent<InventorySlot>(out _);
+        }
+
         internal static bool CanBeHeld(Body body, Item item)
         {
             if (body == null || item == null) return false;
             if (item.Stats != null && item.Stats.wearable && !item.Stats.wearableCanBeHeld) return false;
-            return !body.HasWearable(item);
+            return !IsWornBy(body, item);
+        }
+
+        // 兼容 Prosthetics 木质义肢手规则：木手仅允许持握容器与盛水容器，前置拒绝以免先收起原主手容器却切不出目标物
+        internal static bool CanHandSlotAccept(Body body, Item item)
+        {
+            if (body == null || item == null) return false;
+            int hand = body.handSlot;
+            if (body.slots == null || (hand != 0 && hand != 1) || hand >= body.slots.Length) return true;
+            var slot = body.slots[hand];
+            if (slot == null) return true;
+
+            if (!_woodHandChecked)
+            {
+                _woodHandChecked = true;
+                try
+                {
+                    var rulesType = AccessTools.TypeByName("WoodHandRules");
+                    var method = rulesType != null
+                        ? AccessTools.Method(rulesType, "IsWoodHand", new[] { typeof(InventorySlot) })
+                        : null;
+                    if (method != null && method.IsStatic && method.ReturnType == typeof(bool))
+                        _isWoodHand = (Func<InventorySlot, bool>)Delegate.CreateDelegate(typeof(Func<InventorySlot, bool>), method);
+                }
+                catch (Exception ex)
+                {
+                    ModLog.Warning("Interop", $"解析 WoodHandRules.IsWoodHand 失败：{ex.Message}");
+                }
+            }
+
+            if (_isWoodHand == null) return true;
+            bool isWood;
+            try { isWood = _isWoodHand(slot); }
+            catch { return true; }
+            if (!isWood) return true;
+
+            return item.TryGetComponent<Container>(out _) || item.TryGetComponent<WaterContainerItem>(out _);
         }
 
         internal static int BodySlotOf(Body body, Item item)
@@ -218,13 +269,46 @@ namespace CasualtiesUnknown.Hotbar
                 return body.GetItem(hand) == item;
             }
 
-            bool hadParentContainer = item.TryGetParentContainer(out _);
-            // PickUpItem 内部在校验通过后会自动从父容器 UnloadItem，不可提前卸出以免失败时掉地
+            bool hadParentContainer = item.TryGetParentContainer(out var parentCont);
+            if (hadParentContainer && NeedsPreUnloadForSafePickup(body, parentCont))
+            {
+                if (!CanHandSlotAccept(body, item)) return false;
+
+                parentCont.UnloadItem(item);
+                if (PlayerCamera.main != null) PlayerCamera.main.PlayBackpackSound();
+                body.PickUpItem(item, hand, force: true);
+                if (body.GetItem(hand) != item)
+                {
+                    item.transform.position = parentCont.transform.position;
+                    if (parentCont.TryGetComponent<Item>(out _))
+                        parentCont.LoadItem(item);
+                    else
+                        LoadIntoFixtureContainer(parentCont, item);
+                    return false;
+                }
+
+                RefreshContainerUiIfOpen();
+                return true;
+            }
+
+            // 随身普通穿戴容器交由 PickUpItem 内部校验通过后自动 UnloadItem
             body.PickUpItem(item, hand, force: true);
             bool grabbed = body.GetItem(hand) == item;
             if (grabbed && hadParentContainer)
                 RefreshContainerUiIfOpen();
             return grabbed;
+        }
+
+        // 非手持且缺少穿戴槽位键的父容器（外部袋/箱、嵌套子袋、场景固定箱）须先卸出再拾取，避开原版容器拾取校验触发第三方穿戴补丁空键异常
+        private static bool NeedsPreUnloadForSafePickup(Body body, Container parentCont)
+        {
+            if (parentCont == null) return false;
+            var parentItem = parentCont.GetComponent<Item>();
+            if (parentItem != null && body.HoldingItem(parentItem)) return false;
+            return parentItem == null
+                || parentItem.Stats == null
+                || !parentItem.Stats.wearable
+                || string.IsNullOrEmpty(parentItem.Stats.wearSlotId);
         }
 
         private static bool TrySwapOccupantIntoOtherContainer(
@@ -388,7 +472,7 @@ namespace CasualtiesUnknown.Hotbar
             var contItem = cont.GetComponent<Item>();
             if (contItem == item) return false;
 
-            bool carried = contItem != null && (body.HoldingItem(contItem) || body.HasWearable(contItem));
+            bool carried = contItem != null && (body.HoldingItem(contItem) || IsWornBy(body, contItem));
             if (!carried)
             {
                 if (!allowOpenExternal) return false;

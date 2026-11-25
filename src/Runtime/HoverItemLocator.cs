@@ -22,6 +22,8 @@ namespace CasualtiesUnknown.Hotbar
             var es = EventSystem.current;
             if (es == null) return null;
 
+            var cam = PlayerCamera.main;
+            var mainCanvas = cam != null ? cam.mainCanvas : null;
             int uiLayer = LayerMask.NameToLayer("UI");
             var ped = new PointerEventData(es) { position = Input.mousePosition };
             _uiCasts.Clear();
@@ -30,10 +32,17 @@ namespace CasualtiesUnknown.Hotbar
             for (int i = 0; i < _uiCasts.Count; i++)
             {
                 var go = _uiCasts[i].gameObject;
-                if (go == null) continue;
+                if (go == null || PauseMenuCompat.IsCameraTransientOverlay(cam, go.transform)) continue;
 
                 // 悬停在快捷栏自身槽位上时交由切换逻辑处理，不穿透绑定底层物品
                 if (go.GetComponentInParent<HotbarSlotMarker>() != null)
+                {
+                    blockedByUi = true;
+                    return null;
+                }
+
+                // 屏蔽未使用 "UI" 层的第三方覆盖面板穿透拾取背后世界物品
+                if (PauseMenuCompat.IsThirdPartyOverlayCanvas(go, mainCanvas))
                 {
                     blockedByUi = true;
                     return null;
